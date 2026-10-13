@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="es">
+<html lang="es" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
@@ -23,6 +23,7 @@
   --danger:#B42318; --ball-deep:#C2125F;
   --display:"Archivo","Arial Narrow",Arial,sans-serif;
   --body:"Montserrat",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --pelota:#DCF23F; --pelota-2:#C9E02A;
   --r:12px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
@@ -77,9 +78,9 @@ h3{font-family:var(--display);font-weight:700;font-size:21px;text-transform:uppe
 .ex .n{font-weight:600;min-width:0}
 .ex .cue{grid-column:1/-1;font-size:13px;color:var(--muted)}
 .ex .rx{font-family:var(--display);font-weight:700;font-size:18px;white-space:nowrap;font-variant-numeric:tabular-nums}
-.vid{grid-column:1/-1;justify-self:start;margin-top:4px;font-size:13px;font-weight:700;text-decoration:none;color:var(--fg);background:var(--surface-2);border-radius:999px;padding:5px 11px}
-.vid:hover{background:var(--line)}
-.sec{padding:8px 14px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--muted);background:var(--surface-2);border-top:1px solid var(--line)}
+.vid{grid-column:1/-1;justify-self:start;margin-top:4px;font-size:13px;font-weight:700;text-decoration:none;color:#111113;background:var(--pelota);border-radius:999px;padding:5px 11px}
+.vid:hover{background:var(--pelota-2)}
+.sec{padding:8px 14px;font-size:12px;font-weight:800;text-transform:uppercase;letter-spacing:.07em;color:#111113;background:var(--pelota);border-top:1px solid var(--line)}
 .done-row{padding:12px 14px;border-top:1px solid var(--line)}
 .done-row .btn{width:100%}
 .btn.ok{background:var(--f-agil);color:var(--surface)}
