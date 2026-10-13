@@ -5,37 +5,37 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data:; connect-src 'self' https://*.supabase.co wss://*.supabase.co; frame-src https://challenges.cloudflare.com; worker-src 'self'; manifest-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
-<meta name="theme-color" content="#1D4F91">
+<meta name="theme-color" content="#111113">
 <title>ZEBEN · Mi Plan de Pádel</title>
 <link rel="manifest" href="manifest.json">
 <link rel="icon" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700;800&family=Figtree:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@700;800;900&family=Montserrat:wght@400;500;600;700&display=swap">
 <style>
 
 /* Layout: pista vista desde arriba — cabecera azul pista, contenido en tarjetas claras tipo cristal, una columna pensada para móvil */
 :root{
-  --bg:#EEF2F6; --surface:#FFFFFF; --surface-2:#E3E9F0; --line:#CCD6E1;
-  --fg:#14233A; --muted:#566781;
-  --court:#1D4F91; --court-ink:#FFFFFF; --ball:#C9D82B; --ball-ink:#1B2400;
-  --f-fuerza:#1D4F91; --f-explo:#C2410C; --f-agil:#0F7A5A;
-  --danger:#B42318; --ball-deep:#7C8A00;
-  --display:"Barlow Condensed","Arial Narrow",Arial,sans-serif;
-  --body:"Figtree",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --bg:#E9E9E6; --surface:#FFFFFF; --surface-2:#DEDEDA; --line:#C9C9C4;
+  --fg:#111113; --muted:#55555C;
+  --court:#111113; --court-ink:#FFFFFF; --ball:#E0156F; --ball-ink:#FFFFFF;
+  --f-fuerza:#111113; --f-explo:#C2125F; --f-agil:#0F7A5A;
+  --danger:#B42318; --ball-deep:#C2125F;
+  --display:"Archivo","Arial Narrow",Arial,sans-serif;
+  --body:"Montserrat",system-ui,-apple-system,"Segoe UI",sans-serif;
   --r:12px;
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
-  --bg:#0C1522; --surface:#152234; --surface-2:#1C2C42; --line:#2A3C55;
-  --fg:#E6EDF6; --muted:#93A4BC;
-  --court:#2B62AD; --court-ink:#FFFFFF; --ball:#D3E23A; --ball-ink:#1B2400;
-  --f-fuerza:#7FAEF0; --f-explo:#F59E6B; --f-agil:#4FD1A5; --danger:#F97066; --ball-deep:#D3E23A;
+  --bg:#0B0B0D; --surface:#17171B; --surface-2:#222228; --line:#2F2F37;
+  --fg:#EDEDEA; --muted:#A3A3AB;
+  --court:#111113; --court-ink:#FFFFFF; --ball:#FF2E8B; --ball-ink:#FFFFFF;
+  --f-fuerza:#D6D6DE; --f-explo:#FF6AA9; --f-agil:#4FD1A5; --danger:#F97066; --ball-deep:#FF6AA9;
   color-scheme:dark}}
 :root[data-theme="dark"]{
-  --bg:#0C1522; --surface:#152234; --surface-2:#1C2C42; --line:#2A3C55;
-  --fg:#E6EDF6; --muted:#93A4BC;
-  --court:#2B62AD; --court-ink:#FFFFFF; --ball:#D3E23A; --ball-ink:#1B2400;
-  --f-fuerza:#7FAEF0; --f-explo:#F59E6B; --f-agil:#4FD1A5; --danger:#F97066; --ball-deep:#D3E23A;
+  --bg:#0B0B0D; --surface:#17171B; --surface-2:#222228; --line:#2F2F37;
+  --fg:#EDEDEA; --muted:#A3A3AB;
+  --court:#111113; --court-ink:#FFFFFF; --ball:#FF2E8B; --ball-ink:#FFFFFF;
+  --f-fuerza:#D6D6DE; --f-explo:#FF6AA9; --f-agil:#4FD1A5; --danger:#F97066; --ball-deep:#FF6AA9;
   color-scheme:dark}
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5}
@@ -43,11 +43,10 @@ body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px
 header.top{background:var(--court);color:var(--court-ink);position:relative;overflow:hidden}
 header.top .wrap{padding-block:22px 18px}
 header.top::after{content:"";position:absolute;inset:0;pointer-events:none;
-  background:linear-gradient(90deg,transparent calc(50% - 1px),rgba(255,255,255,.35) calc(50% - 1px),rgba(255,255,255,.35) calc(50% + 1px),transparent calc(50% + 1px)),
-  linear-gradient(transparent 0,transparent calc(100% - 2px),rgba(255,255,255,.35) calc(100% - 2px))}
+  background:linear-gradient(transparent 0,transparent calc(100% - 2px),rgba(255,255,255,.14) calc(100% - 2px))}
 h1{font-family:var(--display);font-weight:800;font-size:clamp(28px,7vw,38px);line-height:1;margin:0;letter-spacing:.01em;text-transform:uppercase;text-wrap:balance}
 .brand{display:flex;align-items:center;gap:14px;position:relative;z-index:1}
-.logo{display:block;width:72px;height:72px;flex:none;filter:drop-shadow(0 4px 10px rgba(0,0,0,.25))}
+.wordmark{display:block;width:min(285px,62vw);height:auto}
 .brand-name{font:800 15px var(--display);letter-spacing:.22em;opacity:.85}
 h1 .ball{display:inline-block;width:.55em;height:.55em;border-radius:50%;background:var(--ball);margin-left:.15em;vertical-align:.08em;box-shadow:inset -3px -3px 0 rgba(0,0,0,.15)}
 .sub{margin:6px 0 0;opacity:.85;font-size:14px}
@@ -66,8 +65,8 @@ h3{font-family:var(--display);font-weight:700;font-size:21px;text-transform:uppe
 .weeks{display:grid;grid-template-columns:repeat(8,1fr);gap:4px;margin-top:8px}
 .wk{border:0;border-radius:8px;padding:8px 0 6px;background:var(--surface-2);color:var(--fg);cursor:pointer;font:700 15px var(--display);display:flex;flex-direction:column;align-items:center;gap:2px}
 .wk small{font:600 9px var(--body);text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
-.wk[aria-pressed="true"]{background:var(--court);color:var(--court-ink)}
-.wk[aria-pressed="true"] small{color:var(--court-ink);opacity:.8}
+.wk[aria-pressed="true"]{background:var(--ball);color:var(--ball-ink)}
+.wk[aria-pressed="true"] small{color:var(--ball-ink);opacity:.85}
 .phase{margin-top:10px;padding:12px 14px;border-radius:var(--r);background:var(--surface);border:1px solid var(--line)}
 .phase b{font-family:var(--display);font-size:18px;text-transform:uppercase;letter-spacing:.02em}
 .day{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);margin-top:14px;overflow:hidden}
@@ -162,14 +161,7 @@ details.panel summary{cursor:pointer;list-style:none}details.panel summary::-web
 <body>
 <header class="top">
   <div class="wrap">
-    <div class="brand"><svg class="logo" role="img" aria-label="ZEBEN" viewBox="0 0 88 88"><g transform="translate(0 0) scale(0.88)">
-<rect width="100" height="100" rx="24" fill="#FFFFFF"/>
-<path d="M50 10V90M16 50H84" stroke="#1D4F91" stroke-opacity=".12" stroke-width="2.5"/>
-<path d="M25 29H71L29 71H64" fill="none" stroke="#1D4F91" stroke-width="12" stroke-linejoin="miter" stroke-miterlimit="10"/>
-<path d="M14 64H22M10 71H20M14 78H22" stroke="#C9D82B" stroke-width="3" stroke-linecap="round" opacity=".9"/>
-<circle cx="76" cy="71" r="9" fill="#C9D82B"/>
-<path d="M70 66.5Q76 71 70 76" stroke="#FFFFFF" stroke-opacity=".45" stroke-width="1.8" fill="none"/>
-</g></svg><div><div class="brand-name">ZEBEN</div><h1>Mi Plan de Pádel</h1></div></div>
+    <div class="brand"><h1 style="margin:0"><img class="wordmark" src="data:image/png;base64,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" alt="ZEBEN · Mi Plan de Pádel" width="283" height="94"></h1></div>
     <button class="who" id="who" hidden aria-label="Mi perfil"></button>
     <p class="sub" id="sub">Preparación física de pádel: fuerza, explosividad y agilidad.</p>
     <div class="prog" id="progress"></div>
