@@ -301,8 +301,9 @@ function go(t) {
 }
 function renderProgress() {
   if (!P) { $("#progress").innerHTML = ""; return; }
-  const n = Object.keys(done).length;
-  $("#progress").innerHTML = `<div class="bar"><span style="width:${Math.round(n / 24 * 100)}%"></span></div><div class="ptxt">${n} de 24 sesiones completadas</div>`;
+  const keys = new Set(P.days.map((d) => d.key)), total = P.days.length * 8;
+  const n = Object.keys(done).filter((k) => keys.has(k.split("-").slice(1).join("-"))).length;
+  $("#progress").innerHTML = `<div class="bar"><span style="width:${Math.round(n / total * 100)}%"></span></div><div class="ptxt">${n} de ${total} sesiones completadas</div>`;
 }
 
 function renderConsent() {
@@ -338,7 +339,7 @@ function renderPlan() {
   const byDow = P.days.map((d) => dowOf(d));
   const planned = byDow.some((x) => x >= 0);
   const todaySess = P.days.filter((d, i) => byDow[i] === selDow);
-  const visibleDays = !planned || showAllDays ? P.days : todaySess;
+  const visibleDays = (!planned || showAllDays ? P.days : todaySess).slice().sort((x, y) => (dowOf(x) < 0 ? 9 : dowOf(x)) - (dowOf(y) < 0 ? 9 : dowOf(y)));
   const shortName = (d) => String(d.title || "").split("·").pop().trim();
   const dowPick = planned ? `<div class="weeks" style="grid-template-columns:repeat(7,minmax(0,1fr))">${DOW_SHORT.map((n, i) => {
       const ds = P.days.filter((d, j) => byDow[j] === i);
@@ -351,7 +352,7 @@ function renderPlan() {
   const days = visibleDays.map((d) => {
     const dose = String(P.dose[d.key][level][p]); const [main, extra] = dose.split(" · ");
     const k = `${week}-${d.key}`; const isDone = !!done[k];
-    return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : "--court"})">
+    return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][P.days.indexOf(d) % 3]})">
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
       ${d.ex[VAR(week)].map((e) => `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`).join("")}
@@ -361,9 +362,9 @@ function renderPlan() {
   const progPick = me.is_admin ? `<div class="chips" style="margin-top:10px">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-plan-prog="${id}" aria-pressed="${+id === planProg}">${esc(n)}</button>`).join("")}</div>` : "";
   $("#app").innerHTML = `
     <h2>Tu programa</h2>
-    <div class="phase"><b>${esc(P.name || progName(planProg))}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes ver cualquier programa." : "8 semanas · 3 sesiones por semana."}</div>${progPick}</div>
+    <div class="phase"><b>${esc(P.name || progName(planProg))}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes ver cualquier programa." : `8 semanas · ${P.days.length} ${P.days.length === 1 ? "sesión" : "sesiones"} por semana.`}</div>${progPick}</div>
     <h2>Semana del plan</h2>
-    <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${w}">${w}<small>${DAY_KEYS.filter((k) => done[w + "-" + k]).length}/3</small></button>`; }).join("")}</div>
+    <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${w}">${w}<small>${P.days.filter((d) => done[w + "-" + d.key]).length}/${P.days.length}</small></button>`; }).join("")}</div>
     <div class="phase"><div class="label">Semana ${week} · ${esc(LV[level])}</div><b>${esc(P.phases[p].name)} · ${esc(P.variants?.[VAR(week)] || "Rutina " + VAR(week))}</b><div class="muted" style="font-size:14px">${esc(P.phases[p].txt)}</div></div>
     ${planned ? `<h2>Día</h2>${dowPick}` : ""}
     ${restCard}
@@ -616,7 +617,7 @@ async function renderAthlete() {
     <div class="stat"><div class="label">Peso</div><div class="v">${a.weight_kg ?? "—"}<small>kg</small></div></div>
     <div class="stat"><div class="label">IMC</div><div class="v">${imc(a)}</div></div>
   </div>
-  <div class="banner">Sesiones hechas: <b>${s.length} de 24</b>${a.phone ? ` · Móvil: <b>${esc(a.phone)}</b>` : ""} · Alta: ${fmtDate(a.created_at)}</div>
+  <div class="banner">Sesiones hechas: <b>${detail.prog?.days ? s.filter((x) => detail.prog.days.some((d) => d.key === x.day)).length : s.length} de ${(detail.prog?.days?.length || 3) * 8}</b>${a.phone ? ` · Móvil: <b>${esc(a.phone)}</b>` : ""} · Alta: ${fmtDate(a.created_at)}</div>
   ${a.notes ? `<div class="banner"><b>Notas:</b> ${esc(a.notes)}</div>` : ""}
 
   <div class="panel"><h3>Programa</h3>
@@ -717,10 +718,11 @@ async function renderEditor() {
   const days = ED.days.map((d, i) => {
     const dose = `<div class="tbl"><table><thead><tr><th>Fase</th>${LV.map((l) => `<th>${esc(l)}</th>`).join("")}<th>Descanso</th></tr></thead><tbody>${PH.map((p, pi) => `<tr><td><b>${esc(p.name)}</b></td>${LV.map((_, li) => `<td>${cellInput(`dose.${d.key}.${li}.${pi}`, ED.dose[d.key][li][pi], 120, 40)}</td>`).join("")}<td>${cellInput(`rest.${d.key}.${pi}`, ED.rest[d.key][pi], 90, 30)}</td></tr>`).join("")}</tbody></table></div>`;
     const weeksOf = (v) => [1, 2, 3, 4, 5, 6, 7, 8].filter((w) => "ABC"[(w - 1) % 3] === v).join(", ");
-    return sec(`s-day-${i}`, d.title, `<div class="grid2">${inp(`days.${i}.title`, d.title, "Nombre de la sesión")}${inp(`days.${i}.when`, d.when, "Día de la semana (Lunes, Martes…)")}${area(`days.${i}.note`, d.note, "Nota al final de la sesión")}</div>
+    return sec(`s-day-${i}`, d.title, `<div class="row" style="justify-content:flex-end;margin-bottom:8px">${ED.days.length > 1 ? `<button class="btn danger sm" data-ed-delday="${i}">Quitar esta sesión</button>` : ""}</div><div class="grid2">${inp(`days.${i}.title`, d.title, "Nombre de la sesión")}${inp(`days.${i}.when`, d.when, "Día de la semana (Lunes, Martes…)")}${area(`days.${i}.note`, d.note, "Nota al final de la sesión")}</div>
       <h3 style="margin-top:14px">Series y repeticiones</h3><p class="muted" style="font-size:13px;margin:4px 0">Formato: «3×8 · RPE 7». Lo que va después del «·» sale como indicación.</p>${dose}
       ${"ABC".split("").map((v) => `<h3 style="margin-top:16px">Rutina ${v} <span class="muted" style="font:500 13px var(--body)">· semanas ${weeksOf(v)}</span></h3>${edList(`days.${i}.ex.${v}`, "day")}`).join("")}`);
   }).join("");
+  const addDay = ED.days.length < 7 ? `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><span class="muted" style="font-size:14px">${ED.days.length} ${ED.days.length === 1 ? "sesión" : "sesiones"} por semana · máximo 7</span><button class="btn sm" id="edAddDay">+ Añadir sesión</button></div></div>` : `<div class="banner">Este programa ya tiene 7 sesiones por semana (una cada día).</div>`;
   const phases = sec("s-phases", "Fases del plan", PH.map((p, pi) => `<div class="grid2" style="margin-bottom:10px">${inp(`phases.${pi}.name`, p.name, `Fase ${pi + 1} · semanas ${p.weeks.join(", ")}`)}${area(`phases.${pi}.txt`, p.txt, "Explicación")}</div>`).join(""));
   const WS = ED.warmSecs || ["1 · Foam roller", "2 · Movilidad de tobillo", "3 · Movilidad y activación"];
   const warm = sec("s-warm", ED.warmTitle || "Calentamiento", `<h3>${esc(WS[0])}</h3>${edList("warm", "row")}<h3 style="margin-top:16px">${esc(WS[1])}</h3>${edList("ankle", "row")}<h3 style="margin-top:16px">${esc(WS[2])}</h3>${edList("mov", "row")}`);
@@ -733,7 +735,7 @@ async function renderEditor() {
   const match = m ? sec("s-match", edProg === 2 ? "Día de la prueba" : "Día de partido", `<div class="grid2">${inp("matchday.title", m.title, "Nombre")}${inp("matchday.label", m.label, "Cuándo y duración")}${area("matchday.note", m.note, "Nota final")}</div>${edBlocks("matchday.blocks")}`) : "";
   $("#app").innerHTML = `<h2>Editar el plan</h2>${edPicker()}
     <div class="banner">Estás editando <b>${esc(ED.name || progName(edProg))}</b>. Los cambios llegan a los atletas de este programa en cuanto pulses <b>Guardar cambios</b>. Si te equivocas, puedes deshacer el último guardado.</div>
-    ${days}${phases}${warm}${comp}${match}
+    ${days}${addDay}${phases}${warm}${comp}${match}
     <div class="panel"><div class="row"><button class="btn ghost sm" id="edUndo">Deshacer último guardado</button></div></div>
     <div class="edbar"><span id="edState">${edDirty ? "Cambios sin guardar" : "Sin cambios"}</span><span class="row"><button class="btn ghost sm" id="edDiscard">Descartar</button><button class="btn sm" id="edSave">Guardar cambios</button></span></div>`;
 }
@@ -758,6 +760,21 @@ async function edClick(t) {
     edProg = id; ED = null; edDirty = false; renderEditor(); return true;
   }
   if (t.dataset.edAdd) { const [p, type] = t.dataset.edAdd.split("|"); getAt(ED, p).push(TPL[type]()); edMark(); renderEditor(); return true; }
+  if (t.id === "edAddDay") {
+    if (ED.days.length >= 7) return true;
+    const keys = new Set(ED.days.map((d) => d.key)); let n = ED.days.length + 1; while (keys.has("d" + n)) n++;
+    const key = "d" + n, used = new Set(ED.days.map((d) => dowDefault(d)));
+    const free = [0, 1, 2, 3, 4, 5, 6].find((x) => !used.has(x)) ?? 0;
+    const base = ED.days[0].key;
+    ED.days.push({ key, title: `Día ${ED.days.length + 1} · Nueva sesión`, c: ["--f-fuerza", "--f-explo", "--f-agil"][ED.days.length % 3], when: DOW[free], note: "", ex: { A: [], B: [], C: [] } });
+    ED.dose[key] = clone(ED.dose[base]); ED.rest[key] = clone(ED.rest[base]);
+    edOpen.add(`s-day-${ED.days.length - 1}`); edMark(); renderEditor(); toast("Sesión añadida. Ponle nombre, día y ejercicios."); return true;
+  }
+  if (t.dataset.edDelday) {
+    const i = +t.dataset.edDelday, d = ED.days[i]; if (!d || ED.days.length <= 1) return true;
+    if (!confirm(`¿Quitar la sesión «${d.title}» de este programa?`)) return true;
+    ED.days.splice(i, 1); delete ED.dose[d.key]; delete ED.rest[d.key]; edMark(); renderEditor(); return true;
+  }
   if (t.dataset.edAddblock) { getAt(ED, t.dataset.edAddblock).push({ sec: "Nuevo bloque", rows: [] }); edMark(); renderEditor(); return true; }
   if (t.dataset.edDel) { const ks = t.dataset.edDel.split("."); const i = +ks.pop(); const arr = getAt(ED, ks.join(".")); if (!confirm("¿Quitar este elemento?")) return true; arr.splice(i, 1); edMark(); renderEditor(); return true; }
   if (t.dataset.edMv) { const [p, i, d] = t.dataset.edMv.split("|"); const arr = getAt(ED, p); const a = +i, b = a + +d; if (b < 0 || b >= arr.length) return true; [arr[a], arr[b]] = [arr[b], arr[a]]; edMark(); renderEditor(); return true; }
