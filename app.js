@@ -49,6 +49,11 @@ const vid = (q) => `<a class="vid" href="${esc(videoUrl(q))}" target="_blank" re
 let sb = null;
 let me = null;        // mi ficha
 let P = null;         // programa (solo si estoy activo)
+let planProg = 1;     // programa que se ve en "Mi plan" (el entrenador puede mirar cualquiera)
+const PROGRAMS = { 1: "Pádel", 2: "HYROX", 3: "Mantente activo", 4: "Musculación" };
+const progName = (id) => PROGRAMS[id] || "Pádel";
+const myProg = () => (PROGRAMS[me?.program_id] ? me.program_id : 1);
+async function loadProgram(id) { const row = await q(sb.from("program").select("data").eq("id", id).maybeSingle()); return row?.data || null; }
 let tab = "plan";
 let done = {};        // sesiones hechas "semana-dia"
 let week = store.get("zb-week", 1);
@@ -253,8 +258,8 @@ async function start(opts = {}) {
     if (!me) { renderAuth("login"); return; }
     P = null;
     if (isActive(me)) {
-      const row = await q(sb.from("program").select("data").eq("id", 1).maybeSingle());
-      P = row?.data || null;
+      planProg = myProg();
+      P = await loadProgram(planProg);
       const s = await q(sb.from("sessions_done").select("week,day").eq("user_id", me.id));
       done = {}; s.forEach((r) => (done[`${r.week}-${r.day}`] = true));
     }
@@ -319,6 +324,7 @@ function renderPlan() {
   const phaseOf = (w) => P.phases.findIndex((p) => p.weeks.includes(w));
   week = Math.min(8, Math.max(1, +week || 1));
   const p = phaseOf(week);
+  const WS = P.warmSecs || ["1 · Foam roller", "2 · Movilidad de tobillo (dorsiflexión)", (P.ankle?.length ? 3 : 2) + " · Movilidad y activación"];
   const row = (w) => `<div class="ex"><span class="n">${esc(w[0])}</span><span class="rx" style="font-size:16px">${esc(w[1])}</span>${w[3] ? `<span class="cue">${esc(w[3])}</span>` : ""}${vid(w[2])}</div>`;
   const days = P.days.map((d) => {
     const dose = String(P.dose[d.key][level][p]); const [main, extra] = dose.split(" · ");
@@ -330,7 +336,10 @@ function renderPlan() {
       <div class="note">${esc(d.note)}</div>
       <div class="done-row"><button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button></div></article>`;
   }).join("");
+  const progPick = me.is_admin ? `<div class="chips" style="margin-top:10px">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-plan-prog="${id}" aria-pressed="${+id === planProg}">${esc(n)}</button>`).join("")}</div>` : "";
   $("#app").innerHTML = `
+    <h2>Tu programa</h2>
+    <div class="phase"><b>${esc(P.name || progName(planProg))}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes ver cualquier programa." : "8 semanas · 3 sesiones por semana."}</div>${progPick}</div>
     <h2>Tu nivel</h2>
     <div class="phase"><b>${esc(LV[level])}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes cambiarlo en Perfil para ver otros niveles." : "Si crees que no es el tuyo, cámbialo en Perfil o coméntalo con Zeben."}</div></div>
     <h2>Semana</h2>
@@ -338,9 +347,9 @@ function renderPlan() {
     <div class="phase"><div class="label">Semana ${week} · ${esc(LV[level])}</div><b>${esc(P.phases[p].name)} · ${esc(P.variants?.[VAR(week)] || "Rutina " + VAR(week))}</b><div class="muted" style="font-size:14px">${esc(P.phases[p].txt)}</div></div>
     <h2>Calentamiento</h2>
     <div class="day" style="--c:var(--ball-deep)">
-      <div class="day-head"><div><div class="label">Antes de cada sesión · ${P.ankle?.length ? "15–20" : "12–15"} min</div><h3>Foam roller + movilidad</h3></div><div class="dose">Ritmo<br>lento</div></div>
-      <div class="sec">1 · Foam roller</div>${P.warm.map(row).join("")}<div class="sec">2 · Movilidad de tobillo (dorsiflexión)</div>${(P.ankle || []).map(row).join("")}<div class="sec">${P.ankle?.length ? 3 : 2} · Movilidad y activación</div>${P.mov.map(row).join("")}
-      <div class="note">Rueda despacio (unos 2–3 cm por segundo) y para 10–20 s en los puntos cargados. Evita rodar sobre articulaciones y zona lumbar. Un tobillo con buena dorsiflexión frena mejor en las salidas laterales y protege rodilla y tendón de Aquiles. Deja al menos 48 h entre la sesión de explosividad y un partido de competición.</div>
+      <div class="day-head"><div><div class="label">Antes de cada sesión · ${P.ankle?.length ? "15–20" : "10–15"} min</div><h3>${esc(P.warmTitle || "Foam roller + movilidad")}</h3></div><div class="dose">Ritmo<br>lento</div></div>
+      ${P.warm?.length ? `<div class="sec">${esc(WS[0])}</div>${P.warm.map(row).join("")}` : ""}${P.ankle?.length ? `<div class="sec">${esc(WS[1])}</div>${P.ankle.map(row).join("")}` : ""}${P.mov?.length ? `<div class="sec">${esc(WS[2])}</div>${P.mov.map(row).join("")}` : ""}
+      <div class="note">${esc(P.warmNote || "Rueda despacio (unos 2–3 cm por segundo) y para 10–20 s en los puntos cargados. Evita rodar sobre articulaciones y zona lumbar. Un tobillo con buena dorsiflexión frena mejor en las salidas laterales y protege rodilla y tendón de Aquiles. Deja al menos 48 h entre la sesión de explosividad y un partido de competición.")}</div>
     </div>
     <h2>Sesiones</h2>${days}${competitionHTML(row)}${matchdayHTML(row)}`;
 }
@@ -358,7 +367,7 @@ function competitionHTML(row) {
 // Sesión extra para el día de partido (no cuenta en las 24 sesiones del plan)
 function matchdayHTML(row) {
   const m = P && P.matchday; if (!m || !Array.isArray(m.blocks)) return "";
-  return `<h2>Día de partido</h2>
+  return `<h2>${esc(m.heading || "Día de partido")}</h2>
     <article class="day" style="--c:var(--danger)">
       <div class="day-head"><div><div class="label">${esc(m.label)}</div><h3>${esc(m.title)}</h3></div><div class="dose">Antes de<br>competir</div></div>
       ${m.blocks.map((b) => `<div class="sec">${esc(b.sec)}</div>${(b.rows || []).map(row).join("")}`).join("")}
@@ -543,7 +552,7 @@ async function renderAthletes() {
     <div class="athletes">${list.length ? list.map((a) => `<button class="ath" data-open="${esc(a.id)}">
       <span class="avatar">${esc(initials(a.name))}</span>
       <span style="min-width:0"><div class="nm">${esc(a.name)}</div>
-      <div class="meta">${esc(a.level)} · ${a.age ?? "—"} años · ${a.height_cm ?? "—"} cm · ${a.weight_kg ?? "—"} kg</div></span>
+      <div class="meta">${esc(progName(a.program_id))} · ${esc(a.level)} · ${a.age ?? "—"} años · ${a.height_cm ?? "—"} cm · ${a.weight_kg ?? "—"} kg</div></span>
       ${accessPill(a)}</button>`).join("") : `<div class="empty"><b>Todavía no hay atletas.</b><br>Pásales el enlace de la app para que creen su cuenta.</div>`}</div>`;
 }
 
@@ -568,6 +577,11 @@ async function renderAthlete() {
   </div>
   <div class="banner">Sesiones hechas: <b>${s.length} de 24</b>${a.phone ? ` · Móvil: <b>${esc(a.phone)}</b>` : ""} · Alta: ${fmtDate(a.created_at)}</div>
   ${a.notes ? `<div class="banner"><b>Notas:</b> ${esc(a.notes)}</div>` : ""}
+
+  <div class="panel"><h3>Programa</h3>
+    <p class="muted" style="font-size:14px;margin:4px 0 10px">El atleta solo ve el programa que elijas aquí. Sus sesiones hechas, cargas y tests se conservan.</p>
+    <div class="chips">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-ath-prog="${id}" aria-pressed="${+id === (a.program_id || 1)}">${esc(n)}</button>`).join("")}</div>
+    <div id="progMsg" class="err"></div></div>
 
   <div class="panel"><h3>Acceso al plan</h3>
     <p class="muted" style="font-size:14px;margin:4px 0 10px">Activa el plan cuando te pague. Al pasar la fecha se bloquea solo.</p>
@@ -620,7 +634,7 @@ async function renderErrors() {
 // =====================================================================
 //  ENTRENADOR: EDITAR EL PLAN (ejercicios, series, repeticiones, vídeos)
 // =====================================================================
-let ED = null, edDirty = false;
+let ED = null, edDirty = false, edProg = 1;
 const edOpen = new Set(["s-day-0"]);
 const clone = (o) => JSON.parse(JSON.stringify(o));
 const getAt = (o, p) => p.split(".").reduce((a, k) => (a == null ? a : a[k]), o);
@@ -648,9 +662,14 @@ function edBlocks(path) {
     `<button class="btn ghost sm" data-ed-addblock="${path}" style="margin-top:10px">+ Añadir bloque</button>`;
 }
 const cellInput = (path, val, w, max) => `<input data-ed="${path}" value="${esc(val)}" maxlength="${max}" style="width:${w}px;border:1px solid var(--line);border-radius:7px;padding:6px;font-size:14px;background:var(--bg);color:var(--fg)">`;
-function renderEditor() {
-  if (!P) { $("#app").innerHTML = `<div class="empty" style="margin-top:24px">No se ha podido cargar el plan.</div>`; return; }
-  if (!ED) { ED = clone(P); edDirty = false; }
+async function renderEditor() {
+  if (!ED) {
+    $("#app").innerHTML = `<p class="muted" style="margin-top:24px">Cargando programa…</p>`;
+    let d = null; try { d = edProg === planProg && P ? P : await loadProgram(edProg); } catch (_) {}
+    if (tab !== "editor") return;
+    if (!d) { $("#app").innerHTML = `<h2>Editar el plan</h2>${edPicker()}<div class="empty" style="margin-top:12px">No se ha podido cargar este programa. Si es nuevo, revisa que hayas pegado la actualización de la base de datos en Supabase.</div>`; return; }
+    ED = clone(d); edDirty = false;
+  }
   const LV = ED.levels, PH = ED.phases;
   const days = ED.days.map((d, i) => {
     const dose = `<div class="tbl"><table><thead><tr><th>Fase</th>${LV.map((l) => `<th>${esc(l)}</th>`).join("")}<th>Descanso</th></tr></thead><tbody>${PH.map((p, pi) => `<tr><td><b>${esc(p.name)}</b></td>${LV.map((_, li) => `<td>${cellInput(`dose.${d.key}.${li}.${pi}`, ED.dose[d.key][li][pi], 120, 40)}</td>`).join("")}<td>${cellInput(`rest.${d.key}.${pi}`, ED.rest[d.key][pi], 90, 30)}</td></tr>`).join("")}</tbody></table></div>`;
@@ -660,20 +679,22 @@ function renderEditor() {
       ${"ABC".split("").map((v) => `<h3 style="margin-top:16px">Rutina ${v} <span class="muted" style="font:500 13px var(--body)">· semanas ${weeksOf(v)}</span></h3>${edList(`days.${i}.ex.${v}`, "day")}`).join("")}`);
   }).join("");
   const phases = sec("s-phases", "Fases del plan", PH.map((p, pi) => `<div class="grid2" style="margin-bottom:10px">${inp(`phases.${pi}.name`, p.name, `Fase ${pi + 1} · semanas ${p.weeks.join(", ")}`)}${area(`phases.${pi}.txt`, p.txt, "Explicación")}</div>`).join(""));
-  const warm = sec("s-warm", "Calentamiento", `<h3>1 · Foam roller</h3>${edList("warm", "row")}<h3 style="margin-top:16px">2 · Movilidad de tobillo</h3>${edList("ankle", "row")}<h3 style="margin-top:16px">3 · Movilidad y activación</h3>${edList("mov", "row")}`);
+  const WS = ED.warmSecs || ["1 · Foam roller", "2 · Movilidad de tobillo", "3 · Movilidad y activación"];
+  const warm = sec("s-warm", ED.warmTitle || "Calentamiento", `<h3>${esc(WS[0])}</h3>${edList("warm", "row")}<h3 style="margin-top:16px">${esc(WS[1])}</h3>${edList("ankle", "row")}<h3 style="margin-top:16px">${esc(WS[2])}</h3>${edList("mov", "row")}`);
   const c = ED.competition;
   const comp = sec("s-comp", "Semana de competición", c ? `<div class="grid2">${inp("competition.title", c.title, "Título de la sección")}${area("competition.intro", c.intro, "Explicación")}</div>` +
     c.sessions.map((s, si) => `<div class="edblock" style="border-color:var(--court)"><div class="row" style="justify-content:space-between"><b>Sesión ${si + 1}</b><button class="btn danger sm" data-ed-del="competition.sessions.${si}">Quitar sesión</button></div>
       <div class="grid2">${inp(`competition.sessions.${si}.title`, s.title, "Nombre")}${inp(`competition.sessions.${si}.label`, s.label, "Cuándo y duración")}${area(`competition.sessions.${si}.note`, s.note, "Nota final")}</div>${edBlocks(`competition.sessions.${si}.blocks`)}</div>`).join("") +
     `<button class="btn sm" id="edAddSession" style="margin-top:12px">+ Añadir sesión de competición</button>` : `<button class="btn sm" id="edAddSession">+ Crear sección de competición</button>`);
   const m = ED.matchday;
-  const match = m ? sec("s-match", "Día de partido", `<div class="grid2">${inp("matchday.title", m.title, "Nombre")}${inp("matchday.label", m.label, "Cuándo y duración")}${area("matchday.note", m.note, "Nota final")}</div>${edBlocks("matchday.blocks")}`) : "";
-  $("#app").innerHTML = `<h2>Editar el plan</h2>
-    <div class="banner">Cambia ejercicios, series, repeticiones, notas y vídeos. Los cambios llegan a todos tus atletas en cuanto pulses <b>Guardar cambios</b>. Si te equivocas, puedes deshacer el último guardado.</div>
+  const match = m ? sec("s-match", edProg === 2 ? "Día de la prueba" : "Día de partido", `<div class="grid2">${inp("matchday.title", m.title, "Nombre")}${inp("matchday.label", m.label, "Cuándo y duración")}${area("matchday.note", m.note, "Nota final")}</div>${edBlocks("matchday.blocks")}`) : "";
+  $("#app").innerHTML = `<h2>Editar el plan</h2>${edPicker()}
+    <div class="banner">Estás editando <b>${esc(ED.name || progName(edProg))}</b>. Los cambios llegan a los atletas de este programa en cuanto pulses <b>Guardar cambios</b>. Si te equivocas, puedes deshacer el último guardado.</div>
     ${days}${phases}${warm}${comp}${match}
     <div class="panel"><div class="row"><button class="btn ghost sm" id="edUndo">Deshacer último guardado</button></div></div>
     <div class="edbar"><span id="edState">${edDirty ? "Cambios sin guardar" : "Sin cambios"}</span><span class="row"><button class="btn ghost sm" id="edDiscard">Descartar</button><button class="btn sm" id="edSave">Guardar cambios</button></span></div>`;
 }
+function edPicker() { return `<div class="chips" style="margin:6px 0 12px">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-ed-prog="${id}" aria-pressed="${+id === edProg}">${esc(n)}</button>`).join("")}</div>`; }
 function edMark() { edDirty = true; const s = $("#edState"); if (s) s.textContent = "Cambios sin guardar"; }
 function edValidate() {
   const bad = [];
@@ -688,6 +709,11 @@ function edValidate() {
 document.addEventListener("input", (e) => { const p = e.target.dataset && e.target.dataset.ed; if (p && ED && tab === "editor") { setAt(ED, p, e.target.value); edMark(); } });
 document.addEventListener("toggle", (e) => { const id = e.target.dataset && e.target.dataset.sec; if (id) e.target.open ? edOpen.add(id) : edOpen.delete(id); }, true);
 async function edClick(t) {
+  if (t.dataset.edProg) {
+    const id = +t.dataset.edProg; if (id === edProg) return true;
+    if (edDirty && !confirm("Tienes cambios sin guardar en este programa. ¿Cambiar sin guardar?")) return true;
+    edProg = id; ED = null; edDirty = false; renderEditor(); return true;
+  }
   if (t.dataset.edAdd) { const [p, type] = t.dataset.edAdd.split("|"); getAt(ED, p).push(TPL[type]()); edMark(); renderEditor(); return true; }
   if (t.dataset.edAddblock) { getAt(ED, t.dataset.edAddblock).push({ sec: "Nuevo bloque", rows: [] }); edMark(); renderEditor(); return true; }
   if (t.dataset.edDel) { const ks = t.dataset.edDel.split("."); const i = +ks.pop(); const arr = getAt(ED, ks.join(".")); if (!confirm("¿Quitar este elemento?")) return true; arr.splice(i, 1); edMark(); renderEditor(); return true; }
@@ -702,15 +728,15 @@ async function edClick(t) {
   if (t.id === "edSave") {
     const bad = edValidate(); if (bad.length) { toast(bad[0]); return true; }
     t.disabled = true;
-    try { await rpc("admin_set_program", { p_data: ED }); P = clone(ED); edDirty = false; toast("Plan guardado. Tus atletas ya lo ven."); renderEditor(); }
+    try { await rpc("admin_set_program", { p_data: ED, p_id: edProg }); if (edProg === planProg) P = clone(ED); edDirty = false; toast(`${progName(edProg)} guardado. Tus atletas ya lo ven.`); renderEditor(); }
     finally { t.disabled = false; }
     return true;
   }
   if (t.id === "edUndo") {
     if (edDirty && !confirm("Perderás los cambios sin guardar. ¿Seguir?")) return true;
     if (!confirm("¿Volver al plan que había antes del último guardado?")) return true;
-    const d = await rpc("admin_undo_program"); if (!d) { toast("No hay ningún guardado anterior"); return true; }
-    P = d; ED = null; renderEditor(); toast("Plan anterior recuperado"); return true;
+    const d = await rpc("admin_undo_program", { p_id: edProg }); if (!d) { toast("No hay ningún guardado anterior"); return true; }
+    if (edProg === planProg) P = d; ED = null; renderEditor(); toast("Plan anterior recuperado"); return true;
   }
   return false;
 }
@@ -771,6 +797,15 @@ document.addEventListener("click", async (e) => {
     if (!me.is_admin) return;
     if (tab === "editor" && (await edClick(t))) return;
     if (t.dataset.open) { openId = t.dataset.open; return renderAthlete(); }
+    if (t.dataset.athProg) {
+      const id = +t.dataset.athProg, a = detail.a; if (id === (a.program_id || 1)) return;
+      if (!confirm(`¿Cambiar a ${a.name} al programa ${progName(id)}?`)) return;
+      t.disabled = true;
+      try { await rpc("admin_set_athlete_program", { p_user: a.id, p_program: id }); athletes = await q(sb.from("profiles").select("*").order("name")); toast(`Programa cambiado a ${progName(id)}`); renderAthlete(); }
+      catch (err) { $("#progMsg").textContent = err.message; t.disabled = false; }
+      return;
+    }
+    if (t.dataset.planProg) { const id = +t.dataset.planProg; t.disabled = true; const d = await loadProgram(id); if (!d) { t.disabled = false; return toast("Ese programa todavía no existe en la base de datos"); } planProg = id; P = d; return renderPlan(); }
     if (t.id === "back") { openId = null; detail = null; return renderAthletes(); }
     if (t.dataset.plus) {
       const cur = $("#ac-until").value; const base = cur && cur > todayISO() ? cur : todayISO();
