@@ -63,7 +63,8 @@ const plain = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g
 const todayDow = () => (new Date().getDay() + 6) % 7;      // 0 = lunes
 let selDow = todayDow(), showAllDays = false;
 // Qué día de la semana es cada sesión según su campo "Día" (Lunes, Miércoles…)
-const dowOf = (d) => { const w = plain(d.when); for (let i = 0; i < 7; i++) if (w.includes(plain(DOW[i]))) return i; return -1; };
+const dowDefault = (d) => { const w = plain(d.when); for (let i = 0; i < 7; i++) if (w.includes(plain(DOW[i]))) return i; return -1; };
+const dowOf = (d, sched) => { const v = (sched === undefined ? me?.schedule : sched)?.[d.key]; return Number.isInteger(v) && v >= 0 && v <= 6 ? v : dowDefault(d); };
 let myLoads = [], myTests = [];
 let athletes = [], openId = null, detail = null;
 let captchaToken = null, turnstileId = null;
@@ -334,7 +335,7 @@ function renderPlan() {
   const p = phaseOf(week);
   const WS = P.warmSecs || ["1 · Foam roller", "2 · Movilidad de tobillo (dorsiflexión)", (P.ankle?.length ? 3 : 2) + " · Movilidad y activación"];
   const row = (w) => `<div class="ex"><span class="n">${esc(w[0])}</span><span class="rx" style="font-size:16px">${esc(w[1])}</span>${w[3] ? `<span class="cue">${esc(w[3])}</span>` : ""}${vid(w[2])}</div>`;
-  const byDow = P.days.map(dowOf);
+  const byDow = P.days.map((d) => dowOf(d));
   const planned = byDow.some((x) => x >= 0);
   const todaySess = P.days.filter((d, i) => byDow[i] === selDow);
   const visibleDays = !planned || showAllDays ? P.days : todaySess;
@@ -351,7 +352,7 @@ function renderPlan() {
     const dose = String(P.dose[d.key][level][p]); const [main, extra] = dose.split(" · ");
     const k = `${week}-${d.key}`; const isDone = !!done[k];
     return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : "--court"})">
-      <div class="day-head"><div><div class="label">${esc(d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
+      <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
       ${d.ex[VAR(week)].map((e) => `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`).join("")}
       <div class="note">${esc(d.note)}</div>
@@ -579,14 +580,31 @@ async function renderAthletes() {
       ${accessPill(a)}</button>`).join("") : `<div class="empty"><b>Todavía no hay atletas.</b><br>Pásales el enlace de la app para que creen su cuenta.</div>`}</div>`;
 }
 
+// Días de entreno del atleta: un día de la semana para cada sesión
+function schedHTML() {
+  const pr = detail?.prog; if (!pr?.days) return "";
+  const sc = detail.sched || {};
+  const used = {}; pr.days.forEach((d) => { const v = dowOf(d, sc); if (v >= 0) used[v] = (used[v] || 0) + 1; });
+  const rest = DOW.filter((_, i) => !used[i]);
+  return `<div class="panel"><h3>Días de entreno</h3>
+    <p class="muted" style="font-size:14px;margin:4px 0 10px">Elige qué día de la semana hace cada sesión. Puedes poner días seguidos y el descanso donde quieras.</p>
+    ${pr.days.map((d) => { const v = dowOf(d, sc); return `<div style="margin-top:10px"><b style="font-size:14px">${esc(d.title)}</b>
+      <div class="weeks" style="grid-template-columns:repeat(7,minmax(0,1fr));margin-top:6px">${DOW_SHORT.map((n, i) => `<button class="wk" data-sched="${esc(d.key)}|${i}" aria-pressed="${i === v}" aria-label="${esc(d.title)}: ${DOW[i]}">${n}</button>`).join("")}</div></div>`; }).join("")}
+    ${Object.values(used).some((n) => n > 1) ? `<div class="banner" style="margin-top:10px">Hay dos sesiones el mismo día. Se verán juntas ese día.</div>` : ""}
+    <p class="muted" style="font-size:13px;margin:10px 0 0">Descanso: ${rest.length ? rest.join(", ") : "ningún día"}.</p>
+    <div class="row" style="margin-top:12px"><button class="btn" id="saveSched">Guardar días</button><button class="btn ghost sm" id="resetSched">Volver a los días del programa</button></div>
+    <div id="schedMsg" class="err"></div></div>`;
+}
 async function renderAthlete() {
   const a = athletes.find((x) => x.id === openId); if (!a) { openId = null; return renderAthletes(); }
   $("#app").innerHTML = `<p class="muted" style="margin-top:24px">Cargando ficha…</p>`;
   let r, s;
-  try { [r, s] = await Promise.all([fetchRecords(a.id), q(sb.from("sessions_done").select("week,day").eq("user_id", a.id))]); }
+  let prog = null;
+  try { [r, s, prog] = await Promise.all([fetchRecords(a.id), q(sb.from("sessions_done").select("week,day").eq("user_id", a.id)), loadProgram(a.program_id || 1).catch(() => null)]); }
   catch (e) { $("#app").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   if (tab !== "atletas" || openId !== a.id) return;
-  detail = { a, loads: r.l, tests: r.t };
+  if (!detail || detail.a.id !== a.id || !detail.sched) detail = { a, sched: { ...(a.schedule || {}) } };
+  detail = { ...detail, a, loads: r.l, tests: r.t, prog };
   const t = todayISO();
   $("#app").innerHTML = `
   <button class="back" id="back">← Volver a atletas</button>
@@ -605,6 +623,8 @@ async function renderAthlete() {
     <p class="muted" style="font-size:14px;margin:4px 0 10px">El atleta solo ve el programa que elijas aquí. Sus sesiones hechas, cargas y tests se conservan.</p>
     <div class="chips">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-ath-prog="${id}" aria-pressed="${+id === (a.program_id || 1)}">${esc(n)}</button>`).join("")}</div>
     <div id="progMsg" class="err"></div></div>
+
+  ${schedHTML()}
 
   <div class="panel"><h3>Acceso al plan</h3>
     <p class="muted" style="font-size:14px;margin:4px 0 10px">Activa el plan cuando te pague. Al pasar la fecha se bloquea solo.</p>
@@ -821,7 +841,22 @@ document.addEventListener("click", async (e) => {
     // Entrenador
     if (!me.is_admin) return;
     if (tab === "editor" && (await edClick(t))) return;
-    if (t.dataset.open) { openId = t.dataset.open; return renderAthlete(); }
+    if (t.dataset.open) { openId = t.dataset.open; detail = null; return renderAthlete(); }
+    if (t.dataset.sched) {
+      const [k, i] = t.dataset.sched.split("|"); detail.sched = { ...(detail.sched || {}), [k]: +i };
+      const box = t.closest(".panel"); box.outerHTML = schedHTML(); return;
+    }
+    if (t.id === "saveSched" || t.id === "resetSched") {
+      const reset = t.id === "resetSched";
+      if (reset && !confirm("¿Volver a los días que marca el programa?")) return;
+      t.disabled = true;
+      try {
+        await rpc("admin_set_athlete_schedule", { p_user: detail.a.id, p_schedule: reset ? null : detail.sched });
+        athletes = await q(sb.from("profiles").select("*").order("name"));
+        detail.sched = reset ? {} : detail.sched; toast(reset ? "Días del programa recuperados" : "Días guardados. El atleta ya los ve."); renderAthlete();
+      } catch (err) { $("#schedMsg").textContent = err.message; t.disabled = false; }
+      return;
+    }
     if (t.dataset.athProg) {
       const id = +t.dataset.athProg, a = detail.a; if (id === (a.program_id || 1)) return;
       if (!confirm(`¿Cambiar a ${a.name} al programa ${progName(id)}?`)) return;
