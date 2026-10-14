@@ -57,6 +57,13 @@ async function loadProgram(id) { const row = await q(sb.from("program").select("
 let tab = "plan";
 let done = {};        // sesiones hechas "semana-dia"
 let week = store.get("zb-week", 1);
+const DOW = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"];
+const DOW_SHORT = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
+const plain = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const todayDow = () => (new Date().getDay() + 6) % 7;      // 0 = lunes
+let selDow = todayDow(), showAllDays = false;
+// Qué día de la semana es cada sesión según su campo "Día" (Lunes, Miércoles…)
+const dowOf = (d) => { const w = plain(d.when); for (let i = 0; i < 7; i++) if (w.includes(plain(DOW[i]))) return i; return -1; };
 let myLoads = [], myTests = [];
 let athletes = [], openId = null, detail = null;
 let captchaToken = null, turnstileId = null;
@@ -317,6 +324,7 @@ function lockedCard() {
     <p style="font-size:14px">Mientras tanto, completa tus datos en <button class="linkbtn" data-tab="perfil">Perfil</button>.</p></div>`;
 }
 
+function i18nToday() { const d = new Date(); return "Hoy es " + DOW[todayDow()].toLowerCase() + ", " + d.getDate() + " de " + ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][d.getMonth()]; }
 function renderPlan() {
   if (!P) { $("#app").innerHTML = lockedCard(); return; }
   const LV = P.levels; let level = Math.max(0, LV.indexOf(me.level));
@@ -326,7 +334,20 @@ function renderPlan() {
   const p = phaseOf(week);
   const WS = P.warmSecs || ["1 · Foam roller", "2 · Movilidad de tobillo (dorsiflexión)", (P.ankle?.length ? 3 : 2) + " · Movilidad y activación"];
   const row = (w) => `<div class="ex"><span class="n">${esc(w[0])}</span><span class="rx" style="font-size:16px">${esc(w[1])}</span>${w[3] ? `<span class="cue">${esc(w[3])}</span>` : ""}${vid(w[2])}</div>`;
-  const days = P.days.map((d) => {
+  const byDow = P.days.map(dowOf);
+  const planned = byDow.some((x) => x >= 0);
+  const todaySess = P.days.filter((d, i) => byDow[i] === selDow);
+  const visibleDays = !planned || showAllDays ? P.days : todaySess;
+  const shortName = (d) => String(d.title || "").split("·").pop().trim();
+  const dowPick = planned ? `<div class="weeks" style="grid-template-columns:repeat(7,minmax(0,1fr))">${DOW_SHORT.map((n, i) => {
+      const ds = P.days.filter((d, j) => byDow[j] === i);
+      const ok = ds.length && ds.every((d) => done[`${week}-${d.key}`]);
+      return `<button class="wk" data-dow="${i}" aria-pressed="${!showAllDays && i === selDow}" aria-label="${DOW[i]}${ds.length ? ": " + esc(ds.map(shortName).join(", ")) : ": descanso"}">${n}<small>${ds.length ? (ok ? "✓ hecho" : "entreno") : "libre"}</small></button>`; }).join("")}</div>
+    <div class="row" style="margin-top:8px;justify-content:space-between"><span class="muted" style="font-size:13px">${i18nToday()}</span><button class="btn ghost sm" data-alldays="1">${showAllDays ? "Ver solo un día" : "Ver toda la semana"}</button></div>` : "";
+  const restCard = planned && !showAllDays && !todaySess.length ? `<div class="panel"><h3>${selDow === todayDow() ? "Hoy" : DOW[selDow]} toca descanso</h3>
+    <p class="muted" style="font-size:14px;margin:6px 0 0">Recuperar también es entrenar. Si te apetece moverte, da un paseo de 20–30 minutos o haz la movilidad del calentamiento.</p>
+    <p style="font-size:14px;margin:8px 0 0">Tus sesiones de la semana: <b>${P.days.map((d, i) => byDow[i] >= 0 ? `${DOW[byDow[i]]} (${esc(shortName(d))})` : "").filter(Boolean).join(", ")}</b>.</p></div>` : "";
+  const days = visibleDays.map((d) => {
     const dose = String(P.dose[d.key][level][p]); const [main, extra] = dose.split(" · ");
     const k = `${week}-${d.key}`; const isDone = !!done[k];
     return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : "--court"})">
@@ -340,18 +361,20 @@ function renderPlan() {
   $("#app").innerHTML = `
     <h2>Tu programa</h2>
     <div class="phase"><b>${esc(P.name || progName(planProg))}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes ver cualquier programa." : "8 semanas · 3 sesiones por semana."}</div>${progPick}</div>
-    <h2>Tu nivel</h2>
-    <div class="phase"><b>${esc(LV[level])}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes cambiarlo en Perfil para ver otros niveles." : "Si crees que no es el tuyo, cámbialo en Perfil o coméntalo con Zeben."}</div></div>
-    <h2>Semana</h2>
-    <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}">S${w}<small>${DAY_KEYS.filter((k) => done[w + "-" + k]).length}/3</small></button>`; }).join("")}</div>
+    <h2>Semana del plan</h2>
+    <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${w}">${w}<small>${DAY_KEYS.filter((k) => done[w + "-" + k]).length}/3</small></button>`; }).join("")}</div>
     <div class="phase"><div class="label">Semana ${week} · ${esc(LV[level])}</div><b>${esc(P.phases[p].name)} · ${esc(P.variants?.[VAR(week)] || "Rutina " + VAR(week))}</b><div class="muted" style="font-size:14px">${esc(P.phases[p].txt)}</div></div>
-    <h2>Calentamiento</h2>
+    ${planned ? `<h2>Día</h2>${dowPick}` : ""}
+    ${restCard}
+    ${visibleDays.length ? `<h2>Calentamiento</h2>
     <div class="day" style="--c:var(--ball-deep)">
       <div class="day-head"><div><div class="label">Antes de cada sesión · ${P.ankle?.length ? "15–20" : "10–15"} min</div><h3>${esc(P.warmTitle || "Foam roller + movilidad")}</h3></div><div class="dose">Ritmo<br>lento</div></div>
       ${P.warm?.length ? `<div class="sec">${esc(WS[0])}</div>${P.warm.map(row).join("")}` : ""}${P.ankle?.length ? `<div class="sec">${esc(WS[1])}</div>${P.ankle.map(row).join("")}` : ""}${P.mov?.length ? `<div class="sec">${esc(WS[2])}</div>${P.mov.map(row).join("")}` : ""}
       <div class="note">${esc(P.warmNote || "Rueda despacio (unos 2–3 cm por segundo) y para 10–20 s en los puntos cargados. Evita rodar sobre articulaciones y zona lumbar. Un tobillo con buena dorsiflexión frena mejor en las salidas laterales y protege rodilla y tendón de Aquiles. Deja al menos 48 h entre la sesión de explosividad y un partido de competición.")}</div>
     </div>
-    <h2>Sesiones</h2>${days}${competitionHTML(row)}${matchdayHTML(row)}`;
+    <h2>${showAllDays || !planned ? "Sesiones" : "Tu sesión"}</h2>${days}` : ""}${competitionHTML(row)}${matchdayHTML(row)}
+    <h2>Tu nivel</h2>
+    <div class="phase"><b>${esc(LV[level])}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes cambiarlo en Perfil para ver otros niveles." : "Si crees que no es el tuyo, cámbialo en Perfil o coméntalo con Zeben."}</div></div>`;
 }
 
 // Sesiones para semanas de competición
@@ -674,7 +697,7 @@ async function renderEditor() {
   const days = ED.days.map((d, i) => {
     const dose = `<div class="tbl"><table><thead><tr><th>Fase</th>${LV.map((l) => `<th>${esc(l)}</th>`).join("")}<th>Descanso</th></tr></thead><tbody>${PH.map((p, pi) => `<tr><td><b>${esc(p.name)}</b></td>${LV.map((_, li) => `<td>${cellInput(`dose.${d.key}.${li}.${pi}`, ED.dose[d.key][li][pi], 120, 40)}</td>`).join("")}<td>${cellInput(`rest.${d.key}.${pi}`, ED.rest[d.key][pi], 90, 30)}</td></tr>`).join("")}</tbody></table></div>`;
     const weeksOf = (v) => [1, 2, 3, 4, 5, 6, 7, 8].filter((w) => "ABC"[(w - 1) % 3] === v).join(", ");
-    return sec(`s-day-${i}`, d.title, `<div class="grid2">${inp(`days.${i}.title`, d.title, "Nombre de la sesión")}${inp(`days.${i}.when`, d.when, "Día")}${area(`days.${i}.note`, d.note, "Nota al final de la sesión")}</div>
+    return sec(`s-day-${i}`, d.title, `<div class="grid2">${inp(`days.${i}.title`, d.title, "Nombre de la sesión")}${inp(`days.${i}.when`, d.when, "Día de la semana (Lunes, Martes…)")}${area(`days.${i}.note`, d.note, "Nota al final de la sesión")}</div>
       <h3 style="margin-top:14px">Series y repeticiones</h3><p class="muted" style="font-size:13px;margin:4px 0">Formato: «3×8 · RPE 7». Lo que va después del «·» sale como indicación.</p>${dose}
       ${"ABC".split("").map((v) => `<h3 style="margin-top:16px">Rutina ${v} <span class="muted" style="font:500 13px var(--body)">· semanas ${weeksOf(v)}</span></h3>${edList(`days.${i}.ex.${v}`, "day")}`).join("")}`);
   }).join("");
@@ -757,6 +780,8 @@ document.addEventListener("click", async (e) => {
 
     // Plan
     if (t.dataset.w) { week = +t.dataset.w; store.set("zb-week", week); return renderPlan(); }
+    if (t.dataset.dow) { selDow = +t.dataset.dow; showAllDays = false; return renderPlan(); }
+    if (t.dataset.alldays) { showAllDays = !showAllDays; return renderPlan(); }
     if (t.dataset.done) {
       const [w, d] = t.dataset.done.split("|"); t.disabled = true;
       const on = await rpc("toggle_session", { p_week: +w, p_day: d });
