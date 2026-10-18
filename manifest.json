@@ -1,7 +1,7 @@
 {
-  "name": "ZEBEN · Mi Plan de Pádel",
+  "name": "ZEBEN · Mi Plan",
   "short_name": "ZEBEN",
-  "description": "Preparación física de pádel: fuerza, explosividad y agilidad.",
+  "description": "Tu plan de entrenamiento: pádel, HYROX, musculación, mantente activo y post parto.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",
