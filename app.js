@@ -50,7 +50,7 @@ let sb = null;
 let me = null;        // mi ficha
 let P = null;         // programa (solo si estoy activo)
 let planProg = 1;     // programa que se ve en "Mi plan" (el entrenador puede mirar cualquiera)
-const PROGRAMS = { 1: "Pádel", 2: "HYROX", 3: "Mantente activo", 4: "Musculación" };
+const PROGRAMS = { 1: "Pádel", 2: "HYROX", 3: "Mantente activo", 4: "Musculación", 5: "Post parto" };
 const progName = (id) => PROGRAMS[id] || "Pádel";
 const myProg = () => (PROGRAMS[me?.program_id] ? me.program_id : 1);
 async function loadProgram(id) { const row = await q(sb.from("program").select("data").eq("id", id).maybeSingle()); return row?.data || null; }
