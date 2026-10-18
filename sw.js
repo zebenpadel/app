@@ -1,5 +1,5 @@
 // ZEBEN · Service worker: la app abre rápido, funciona como app instalada y recibe avisos.
-const CACHE = "zeben-v1";
+const CACHE = "zeben-v2";
 const SHELL = ["./", "index.html", "app.js", "manifest.json", "icon-192.png", "icon-512.png", "privacidad.html", "legal.html"];
 
 self.addEventListener("install", (e) => {
@@ -8,12 +8,13 @@ self.addEventListener("install", (e) => {
 self.addEventListener("activate", (e) => {
   e.waitUntil(caches.keys().then((ks) => Promise.all(ks.filter((k) => k !== CACHE).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
-// Solo se guardan los archivos de la propia app. Los datos (Supabase) nunca se guardan en caché.
+// Los cambios que subas a GitHub se ven al momento. Solo se guardan los archivos de la propia app. Los datos (Supabase) nunca se guardan en caché.
 self.addEventListener("fetch", (e) => {
   const url = new URL(e.request.url);
   if (e.request.method !== "GET" || url.origin !== self.location.origin) return;
   e.respondWith(
-    fetch(e.request).then((r) => {
+    // "no-cache": pregunta siempre al servidor si hay versión nueva; si no hay, usa la guardada sin descargar de nuevo
+    fetch(new Request(url.href, { cache: "no-cache", credentials: "same-origin" })).then((r) => {
       if (r.ok) { const copy = r.clone(); caches.open(CACHE).then((c) => c.put(e.request, copy)); }
       return r;
     }).catch(() => caches.match(e.request).then((r) => r || caches.match("index.html")))
