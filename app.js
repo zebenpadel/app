@@ -500,9 +500,20 @@ function athleteFields(a, levels, progId = 1) {
     <label class="field"><span class="label">Edad (años)</span><input id="f-edad" type="number" inputmode="numeric" min="10" max="90" value="${esc(a.age ?? "")}"></label>
     <label class="field"><span class="label">Altura (cm)</span><input id="f-altura" type="number" inputmode="decimal" min="120" max="230" value="${esc(a.height_cm ?? "")}"></label>
     <label class="field"><span class="label">Peso corporal (kg)</span><input id="f-peso" type="number" inputmode="decimal" step="0.1" min="30" max="200" value="${esc(a.weight_kg ?? "")}"></label>
-    <label class="field full"><span class="label">Notas / lesiones</span><input id="f-notas" value="${esc(a.notes ?? "")}" maxlength="300"></label>
+    <label class="field full"><span class="label">Objetivo final</span><select id="f-objetivo"><option value="">Elige tu objetivo…</option>${GOALS.map((g) => `<option ${a.goal === g ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></label>
+    <label class="field full"><span class="label">Cuéntalo con tus palabras (opcional)</span><input id="f-objetivo-txt" value="${esc(a.goal_detail ?? "")}" maxlength="300" placeholder="Ej.: bajar 5 kg antes del verano, ganar el torneo de mi club…"></label>
+    <label class="field full"><span class="label">¿Tienes alguna lesión, dolor o patología?</span><select id="f-lesion"><option value="">Elige…</option><option value="no" ${a.has_injury === false ? "selected" : ""}>No</option><option value="si" ${a.has_injury ? "selected" : ""}>Sí</option></select></label>
+    <label class="field full" id="f-lesion-box" ${a.has_injury ? "" : "hidden"}><span class="label">¿Cuál? Desde cuándo y si te sigue molestando</span><input id="f-lesiones" value="${esc(a.injuries ?? "")}" maxlength="400" placeholder="Ej.: tendinitis rotuliana derecha desde 2024, hipertensión, asma…"></label>
+    <label class="field full"><span class="label">Otras notas</span><input id="f-notas" value="${esc(a.notes ?? "")}" maxlength="300"></label>
   </div>`;
 }
+const GOALS = ["Perder grasa", "Ganar músculo", "Rendir más en mi deporte", "Preparar una competición", "Salud y bienestar", "Volver tras una lesión", "Otro"];
+function readHealth() {
+  const l = $("#f-lesion").value;
+  return { p_has_injury: l === "" ? null : l === "si", p_injuries: $("#f-lesiones").value.replace(/[<>]/g, "").trim(),
+    p_goal: $("#f-objetivo").value || null, p_goal_detail: $("#f-objetivo-txt").value.replace(/[<>]/g, "").trim() };
+}
+document.addEventListener("change", (e) => { if (e.target.id === "f-lesion") { const b = $("#f-lesion-box"); if (b) b.hidden = e.target.value !== "si"; } });
 function readFields() {
   return { p_name: $("#f-nombre").value.replace(/[<>]/g, "").trim(), p_level: $("#f-nivel").value, p_side: $("#f-lado").value,
     p_age: numOrNull("#f-edad"), p_height: numOrNull("#f-altura"), p_weight: numOrNull("#f-peso"), p_notes: $("#f-notas").value.replace(/[<>]/g, "").trim() };
@@ -597,11 +608,33 @@ async function renderAthletes() {
     <div class="athletes">${list.length ? list.map((a) => `<button class="ath" data-open="${esc(a.id)}">
       <span class="avatar">${esc(initials(a.name))}</span>
       <span style="min-width:0"><div class="nm">${esc(a.name)}</div>
-      <div class="meta">${esc(progName(a.program_id))} · ${esc(a.level)} · ${a.age ?? "—"} años · ${a.height_cm ?? "—"} cm · ${a.weight_kg ?? "—"} kg</div></span>
+      <div class="meta">${a.has_injury ? `<b style="color:var(--danger)">⚠ Lesión</b> · ` : ""}${esc(progName(a.program_id))} · ${esc(a.level)} · ${a.age ?? "—"} años · ${a.height_cm ?? "—"} cm · ${a.weight_kg ?? "—"} kg</div></span>
       ${accessPill(a)}</button>`).join("") : `<div class="empty"><b>Todavía no hay atletas.</b><br>Pásales el enlace de la app para que creen su cuenta.</div>`}</div>`;
 }
 
 // Días de entreno del atleta: un día de la semana para cada sesión
+// Peso saludable según la altura (IMC 18,5–24,9) y resumen de objetivo y lesiones, solo para el entrenador
+function weightInfo(a) {
+  if (!a.height_cm) return null;
+  const h = a.height_cm / 100, lo = Math.round(18.5 * h * h), hi = Math.round(24.9 * h * h);
+  if (!a.weight_kg) return { lo, hi, txt: "Falta el peso", cls: "" };
+  const b = a.weight_kg / (h * h);
+  if (b < 18.5) return { lo, hi, bmi: b, txt: `Por debajo (${Math.round(lo - a.weight_kg)} kg para llegar al rango)`, cls: "warn" };
+  if (b < 25) return { lo, hi, bmi: b, txt: "Dentro del rango saludable", cls: "ok" };
+  if (b < 30) return { lo, hi, bmi: b, txt: `Por encima (${Math.round(a.weight_kg - hi)} kg sobre el rango)`, cls: "warn" };
+  return { lo, hi, bmi: b, txt: `Bastante por encima (${Math.round(a.weight_kg - hi)} kg sobre el rango)`, cls: "bad" };
+}
+function healthHTML(a) {
+  const w = weightInfo(a);
+  const inj = a.has_injury ? `<div class="banner" style="border-left:4px solid var(--danger)"><b style="color:var(--danger)">Lesión o patología:</b> ${esc(a.injuries || "Sí, sin detallar")}</div>`
+    : a.has_injury === false ? `<div class="banner"><b>Lesiones o patologías:</b> ninguna</div>` : `<div class="banner"><b>Lesiones o patologías:</b> sin contestar</div>`;
+  const goal = `<div class="banner"><b>Objetivo:</b> ${a.goal ? esc(a.goal) : "sin contestar"}${a.goal_detail ? ` · ${esc(a.goal_detail)}` : ""}</div>`;
+  const wt = w ? `<div class="panel"><h3>Peso óptimo</h3>
+    <p style="margin:6px 0 0;font-size:15px">Para ${String(a.height_cm).replace(".", ",")} cm, el rango saludable es <b>${w.lo}–${w.hi} kg</b>.</p>
+    ${a.weight_kg ? `<p style="margin:6px 0 0;font-size:15px">Pesa <b>${String(a.weight_kg).replace(".", ",")} kg</b> · IMC ${w.bmi.toFixed(1).replace(".", ",")} · <span class="pill" style="display:inline-block;margin-top:4px;line-height:1.35;white-space:normal;color:#fff;background:${w.cls === "ok" ? "#0F7A5A" : w.cls === "warn" ? "#B45309" : "#B42318"}">${esc(w.txt)}</span></p>` : `<p class="muted" style="margin:6px 0 0;font-size:14px">${esc(w.txt)}.</p>`}
+    <p class="muted" style="margin:8px 0 0;font-size:13px">Cálculo por IMC (18,5–24,9). No distingue músculo de grasa: en atletas muy musculados puede salir alto sin que sobre peso.</p></div>` : "";
+  return goal + inj + wt;
+}
 function schedHTML() {
   const pr = detail?.prog; if (!pr?.days) return "";
   const sc = detail.sched || {};
@@ -638,6 +671,7 @@ async function renderAthlete() {
     <div class="stat"><div class="label">IMC</div><div class="v">${imc(a)}</div></div>
   </div>
   <div class="banner">Sesiones hechas: <b>${detail.prog?.days ? s.filter((x) => detail.prog.days.some((d) => d.key === x.day)).length : s.length} de ${(detail.prog?.days?.length || 3) * 8}</b>${a.phone ? ` · Móvil: <b>${esc(a.phone)}</b>` : ""} · Alta: ${fmtDate(a.created_at)}</div>
+  ${healthHTML(a)}
   ${a.notes ? `<div class="banner"><b>Notas:</b> ${esc(a.notes)}</div>` : ""}
 
   <div class="panel"><h3>Programa</h3>
@@ -858,7 +892,7 @@ document.addEventListener("click", async (e) => {
     if (t.id === "saveMe") {
       const f = readFields(); if (f.p_name.length < 2) return ($("#meMsg").textContent = "Escribe tu nombre.");
       t.disabled = true;
-      try { await rpc("update_my_profile", { ...f, p_notify: true }); me = await loadMe(); $("#who").textContent = initials(me.name); toast("Datos guardados"); $("#meMsg").textContent = ""; }
+      try { await rpc("update_my_profile", { ...f, p_notify: true }); await rpc("save_health_goal", { p_user: me.id, ...readHealth() }); me = await loadMe(); $("#who").textContent = initials(me.name); toast("Datos guardados"); $("#meMsg").textContent = ""; }
       catch (err) { $("#meMsg").textContent = err.message; } finally { t.disabled = false; }
       return;
     }
@@ -921,7 +955,7 @@ document.addEventListener("click", async (e) => {
     }
     if (t.id === "saveEdit") {
       const f = readFields(); if (f.p_name.length < 2) return ($("#editMsg").textContent = "El nombre no puede quedar vacío.");
-      try { await rpc("admin_update_athlete", { p_user: detail.a.id, ...f }); athletes = await q(sb.from("profiles").select("*").order("name")); toast("Guardado"); renderAthlete(); }
+      try { await rpc("admin_update_athlete", { p_user: detail.a.id, ...f }); await rpc("save_health_goal", { p_user: detail.a.id, ...readHealth() }); athletes = await q(sb.from("profiles").select("*").order("name")); toast("Guardado"); renderAthlete(); }
       catch (err) { $("#editMsg").textContent = err.message; }
       return;
     }
