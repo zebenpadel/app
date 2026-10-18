@@ -1,5 +1,5 @@
 /* =====================================================================
-   ZEBEN · Mi Plan de Pádel
+   ZEBEN · Mi Plan
    App para atletas (su plan, su progreso) y para el entrenador (fichas).
    ===================================================================== */
 "use strict";
@@ -331,6 +331,94 @@ function lockedCard() {
     <p style="font-size:14px">Mientras tanto, completa tus datos en <button class="linkbtn" data-tab="perfil">Perfil</button>.</p></div>`;
 }
 
+// =====================================================================
+//  PLAN PERSONALIZADO: se adapta solo al objetivo y a las zonas de lesión,
+//  y el entrenador puede cambiar o quitar ejercicios para cada atleta
+// =====================================================================
+const ZONES = { rodilla: "Rodilla", tobillo: "Tobillo", hombro: "Hombro", lumbar: "Zona lumbar", cadera: "Cadera", muneca: "Codo o muñeca", cuello: "Cuello" };
+const X = (n, c, v) => ({ n, c, v });
+// Para cada zona: [palabras del ejercicio, alternativa]. Gana la primera que encaje.
+const INJ_RULES = {
+  rodilla: [
+    [/salto|jump|pliometr|burpee|comba|skipping|sprint|drop|bound|rebote/, [X("Elevación de talones lenta", "En lugar del ejercicio de impacto: sin saltos mientras te moleste la rodilla.", "elevación de talones técnica"), X("Gemelo sentado", "Sin impacto, recorrido completo y lento.", "gemelo sentado técnica"), X("Isometría de gemelo en escalón", "Aguanta 20–30 s de puntillas sin dolor.", "isometría gemelo")]],
+    [/extension de cuadriceps|extension de cuádriceps/, X("Isometría de cuádriceps en pared", "Espalda en la pared, rodillas a 45–60°. Aguanta 30–45 s sin dolor.", "sentadilla isométrica pared")],
+    [/sentadilla|squat|zancada|lunge|bulgara|step-up|step up|prensa|wall ball|thruster|hack|pistol|split/, [X("Hip thrust o puente de glúteo", "Pierna fuerte sin cargar la rodilla. Si no duele, más adelante volverás a la sentadilla.", "hip thrust técnica"), X("Abducción de cadera con banda", "Glúteo medio: estabiliza la rodilla. Sentada o tumbada de lado.", "abducción de cadera con banda"), X("Puente de glúteo a una pierna", "Cadera nivelada arriba, sin dolor en la rodilla.", "puente de glúteo a una pierna"), X("Curl femoral con fitball", "Isquios fuertes protegen la rodilla.", "curl femoral fitball")]],
+    [/carrera|sled push|cambio de direccion|agilidad|t test|estrella|conos|desplazamiento|reaccion|shuffle|lateral/, [X("Bici estática o elíptica", "Mismo tiempo y esfuerzo, sin impacto en la rodilla.", "bicicleta estática intervalos"), X("Remo ergómetro", "Mismo tiempo y esfuerzo; para si molesta la rodilla.", "remo ergómetro técnica"), X("Ergómetro de brazos o bici suave", "Mantén el pulso alto sin cargar la rodilla.", "ergómetro de brazos")]],
+  ],
+  tobillo: [
+    [/salto|jump|pliometr|burpee|comba|skipping|sprint|drop|bound|rebote|carrera|cambio de direccion|agilidad|t test|estrella|conos|desplazamiento|reaccion|shuffle|lateral|sled push/, [X("Bici estática o remo ergómetro", "Mismo tiempo y esfuerzo, sin impacto en el tobillo.", "bicicleta estática intervalos"), X("Remo ergómetro", "Sin impacto en el tobillo.", "remo ergómetro técnica"), X("Ergómetro de brazos o bici suave", "Mantén el pulso alto sin cargar el tobillo.", "ergómetro de brazos")]],
+    [/talones|gemelo|calf/, X("Gemelo sentado con poco peso", "Recorrido sin dolor, sin rebotes.", "gemelo sentado técnica")],
+  ],
+  hombro: [
+    [/press militar|press de hombro|push press|arnold|elevacion lateral|elevaciones laterales|wall ball|thruster|overhead|sobre la cabeza|fondos|dominada|pullover|skierg/, [X("Rotación externa de hombro con banda", "Codo pegado al cuerpo, sin dolor. Fortalece el hombro mientras se recupera.", "rotación externa hombro banda"), X("Elevación en Y tumbada boca abajo", "Brazos en Y, sin peso o muy ligero, sin dolor.", "y raise boca abajo"), X("Retracción escapular con banda", "Junta las escápulas sin subir los hombros.", "retracción escapular banda")]],
+    [/press banca|flexion|press de pecho|press inclinado|aperturas|cruce de poleas|pec deck|floor press|press plano/, X("Press en el suelo con agarre neutro", "Mancuernas ligeras y palmas enfrentadas. Para si duele.", "floor press agarre neutro")],
+    [/jalon|remo invertido|burpee|toques de hombro/, X("Face pull con banda", "Codos altos, peso ligero y sin dolor.", "face pull con banda elástica")],
+  ],
+  lumbar: [
+    [/peso muerto|buenos dias|good morning/, X("Hip thrust", "Glúteo y cadena posterior sin cargar la zona lumbar.", "hip thrust técnica")],
+    [/remo con barra|remo inclinado/, X("Remo con pecho apoyado", "Pecho en un banco inclinado: la espalda baja descansa.", "remo pecho apoyado banco")],
+    [/sentadilla trasera|sentadilla frontal|thruster|sandbag|saco/, X("Sentadilla goblet ligera", "Peso delante del pecho, tronco erguido y recorrido sin dolor.", "sentadilla goblet técnica")],
+    [/superman|russian twist|rueda abdominal|rotacion|giro|swing|sled pull|lanzamiento/, [X("Dead bug", "Zona lumbar pegada al suelo todo el tiempo.", "dead bug ejercicio técnica"), X("Bird dog", "Brazo y pierna contrarios sin mover la cadera.", "bird dog ejercicio técnica"), X("Plancha lateral de rodillas", "Cadera alta, sin dolor lumbar.", "plancha lateral de rodillas")]],
+  ],
+  cadera: [
+    [/salto|jump|pliometr|burpee|bound|rebote/, X("Puente de glúteo con banda", "Sin impacto. Empuja las rodillas hacia fuera contra la banda.", "puente de glúteo con banda")],
+    [/sentadilla profunda|zancada|lunge|bulgara|split|step-up|step up|90\/90|aductor|lateral|pistol/, [X("Puente de glúteo a una pierna", "Recorrido corto y sin dolor en la cadera.", "puente de glúteo a una pierna"), X("Abducción de cadera con banda", "Rango cómodo y sin dolor.", "abducción de cadera con banda"), X("Bird dog", "Estabilidad de cadera sin carga.", "bird dog ejercicio técnica")]],
+  ],
+  muneca: [
+    [/flexion|fondos|plancha|toques de hombro|burpee|rueda abdominal|mountain|escaladores/, X("Plancha sobre antebrazos", "Apoyo en antebrazos: la muñeca no carga peso.", "plancha abdominal técnica")],
+    [/curl|press|dominada|jalon|farmer|remo|wall ball|thruster|skierg/, null],
+  ],
+  cuello: [
+    [/encogimiento|press militar|overhead|sobre la cabeza|push press|pullover|superman/, X("Face pull con banda", "Peso ligero, cuello relajado y mirada al frente.", "face pull con banda elástica")],
+  ],
+};
+const GOAL_RULES = {
+  "Ganar músculo": { sets: 1, txt: "1 serie más en cada ejercicio para ganar músculo." },
+  "Perder grasa": { sets: 0, fin: true, txt: "Final quemagrasa de 8–10 minutos en cada sesión." },
+  "Salud y bienestar": { sets: -1, cap: true, txt: "1 serie menos e intensidad moderada (RPE 7 como máximo)." },
+  "Volver tras una lesión": { sets: -1, cap: true, txt: "1 serie menos e intensidad moderada mientras vuelves." },
+  "Preparar una competición": { sets: 0, txt: "La semana de tu prueba, sigue la pestaña Competición." },
+};
+// Ajustes del atleta a partir de su ficha. custom: { auto, sets, swaps: { "clave|A|0": {n,c,v} | {skip:true} } }
+function personalFor(a, prog) {
+  const cu = a?.custom || {}, auto = cu.auto !== false, out = { notes: [], sets: 0, cap: false, fin: false, swaps: cu.swaps || {}, auto };
+  if (!a) return out;
+  const g = auto ? GOAL_RULES[a.goal] : null;
+  if (g) { out.sets = g.sets; out.cap = !!g.cap; out.fin = !!g.fin; out.notes.push(`Objetivo «${a.goal}»: ${g.txt}`); }
+  if (Number.isInteger(cu.sets)) { out.sets = cu.sets; out.notes = out.notes.filter((x) => !/serie/.test(x)); if (cu.sets) out.notes.push(`Tu entrenador ha ajustado las series: ${cu.sets > 0 ? "+" : ""}${cu.sets} por ejercicio.`); }
+  out.zones = auto && a.has_injury ? (a.injury_zones || []).filter((z) => INJ_RULES[z]) : [];
+  if (out.zones.length) out.notes.push(`Lesión (${out.zones.map((z) => ZONES[z].toLowerCase()).join(", ")}): los ejercicios que cargan esa zona están cambiados por alternativas seguras.`);
+  out.prog = prog;
+  return out;
+}
+// Ejercicio de una sesión tras aplicar lesión y retoques del entrenador. Devuelve null si se quita.
+function personalEx(pz, dayKey, v, i, e, used) {
+  const sw = pz.swaps[`${dayKey}|${v}|${i}`];
+  if (sw?.skip) return null;
+  if (sw?.n) return { e: [sw.n, sw.c || "", e[2], sw.v || sw.n], tag: "Cambiado por tu entrenador" };
+  const name = plain(e[0]);
+  for (const z of pz.zones || []) for (const [re, alt] of INJ_RULES[z]) {
+    if (!re.test(name)) continue;
+    if (alt === null) return { e: [e[0] + " (agarre neutro o con banda)", "Muñeca recta, peso ligero. Si molesta, sáltalo y coméntalo. " + e[1], e[2], e[3]], tag: `Adaptado por tu ${ZONES[z].toLowerCase()}` };
+    const opts = Array.isArray(alt) ? alt : [alt];
+    const pick = opts.find((o) => !used || !used.has(o.n)) || opts[0]; if (used) used.add(pick.n);
+    return { e: [pick.n, pick.c, e[2], pick.v], tag: `Adaptado por tu ${ZONES[z].toLowerCase()} · antes: ${e[0]}` };
+  }
+  return { e, tag: "" };
+}
+// Series y repeticiones con los ajustes (series ±, intensidad moderada)
+function personalDose(pz, dose) {
+  let [main, extra] = String(dose).split(" · ");
+  if (pz.sets) main = main.replace(/^(\d+)(?=\s*[×x ])/, (m, n) => String(Math.min(6, Math.max(1, +n + pz.sets))));
+  if (pz.cap && extra) extra = extra.replace(/RPE\s*(\d+)(–\d+)?/g, (m, a, b) => (+a >= 8 || (b && +b.slice(1) >= 8) ? "RPE 6–7" : m)).replace(/\d+(–\d+)?\s*%\s*1RM/g, "carga moderada");
+  return [main, extra];
+}
+function finisherHTML(pz) {
+  if (!pz.fin) return "";
+  const soft = (pz.zones || []).some((z) => z === "rodilla" || z === "tobillo") || pz.prog === 5;
+  return `<div class="sec">Final quemagrasa · 8–10 min</div><div class="ex"><span class="n">${soft ? "Bici o elíptica en intervalos" : "Intervalos en bici, remo o cuesta"}</span><span class="rx">8–10 min</span><span class="cue">${pz.prog === 5 ? "Ritmo cómodo: 1 min algo más rápido y 1 min suave." : "30 s fuerte y 30 s suave. Termina con 2 minutos suaves."}</span>${vid("intervalos bicicleta estática")}</div>`;
+}
+
 function i18nToday() { const d = new Date(); return "Hoy es " + DOW[todayDow()].toLowerCase() + ", " + d.getDate() + " de " + ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][d.getMonth()]; }
 function renderPlan() {
   if (!P) { $("#app").innerHTML = lockedCard(); return; }
@@ -354,13 +442,15 @@ function renderPlan() {
   const restCard = planned && !showAllDays && !todaySess.length ? `<div class="panel"><h3>${selDow === todayDow() ? "Hoy" : DOW[selDow]} toca descanso</h3>
     <p class="muted" style="font-size:14px;margin:6px 0 0">Recuperar también es entrenar. Si te apetece moverte, da un paseo de 20–30 minutos o haz la movilidad del calentamiento.</p>
     <p style="font-size:14px;margin:8px 0 0">Tus sesiones de la semana: <b>${P.days.map((d, i) => byDow[i] >= 0 ? `${DOW[byDow[i]]} (${esc(shortName(d))})` : "").filter(Boolean).join(", ")}</b>.</p></div>` : "";
+  const pz = personalFor(me, planProg);
   const days = visibleDays.map((d) => {
-    const dose = String(P.dose[d.key][level][p]); const [main, extra] = dose.split(" · ");
+    const [main, extra] = personalDose(pz, P.dose[d.key][level][p]);
     const k = `${week}-${d.key}`; const isDone = !!done[k];
     return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][P.days.indexOf(d) % 3]})">
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
-      ${d.ex[VAR(week)].map((e) => `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`).join("")}
+      ${((u) => d.ex[VAR(week)].map((e0, i) => personalEx(pz, d.key, VAR(week), i, e0, u)))(new Set()).filter(Boolean).map(({ e, tag }) => `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`).join("")}
+      ${finisherHTML(pz)}
       <div class="note">${esc(d.note)}</div>
       <div class="done-row"><button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button></div></article>`;
   }).join("");
@@ -372,6 +462,7 @@ function renderPlan() {
     <p class="muted" style="font-size:13px;margin:-4px 0 0">A = primer mes · B = segundo mes</p>
     <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${wkLabel(w)}">${wkLabel(w)}<small>${P.days.filter((d) => done[w + "-" + d.key]).length}/${P.days.length}</small></button>`; }).join("")}</div>
     <div class="phase"><div class="label">Semana ${wkLabel(week)} · ${esc(LV[level])}</div><b>${esc(P.phases[p].name)} · ${esc(P.variants?.[VAR(week)] || "Rutina " + VAR(week))}</b><div class="muted" style="font-size:14px">${esc(P.phases[p].txt)}</div></div>
+    ${pz.notes.length ? `<div class="panel" style="margin-top:14px"><h3>Plan adaptado a ti</h3><ul style="margin:8px 0 0;padding-left:18px;font-size:14px">${pz.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}
     ${planned ? `<h2>Día</h2>${dowPick}` : ""}
     ${restCard}
     ${visibleDays.length ? `<h2>Calentamiento</h2>
@@ -503,7 +594,9 @@ function athleteFields(a, levels, progId = 1) {
     <label class="field full"><span class="label">Objetivo final</span><select id="f-objetivo"><option value="">Elige tu objetivo…</option>${GOALS.map((g) => `<option ${a.goal === g ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></label>
     <label class="field full"><span class="label">Cuéntalo con tus palabras (opcional)</span><input id="f-objetivo-txt" value="${esc(a.goal_detail ?? "")}" maxlength="300" placeholder="Ej.: bajar 5 kg antes del verano, ganar el torneo de mi club…"></label>
     <label class="field full"><span class="label">¿Tienes alguna lesión, dolor o patología?</span><select id="f-lesion"><option value="">Elige…</option><option value="no" ${a.has_injury === false ? "selected" : ""}>No</option><option value="si" ${a.has_injury ? "selected" : ""}>Sí</option></select></label>
-    <label class="field full" id="f-lesion-box" ${a.has_injury ? "" : "hidden"}><span class="label">¿Cuál? Desde cuándo y si te sigue molestando</span><input id="f-lesiones" value="${esc(a.injuries ?? "")}" maxlength="400" placeholder="Ej.: tendinitis rotuliana derecha desde 2024, hipertensión, asma…"></label>
+    <label class="field full" id="f-lesion-box" ${a.has_injury ? "" : "hidden"}><span class="label">¿Cuál? Desde cuándo y si te sigue molestando</span><input id="f-lesiones" value="${esc(a.injuries ?? "")}" maxlength="400" placeholder="Ej.: tendinitis rotuliana derecha desde 2024, hipertensión, asma…">
+      <span class="label" style="margin-top:10px;display:block">¿Qué zona? Marca todas las que te molesten</span>
+      <span class="chips" style="margin-top:6px">${Object.entries(ZONES).map(([k, n]) => `<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" class="f-zona" value="${k}" ${(a.injury_zones || []).includes(k) ? "checked" : ""}> ${esc(n)}</label>`).join("")}</span></label>
     <label class="field full"><span class="label">Otras notas</span><input id="f-notas" value="${esc(a.notes ?? "")}" maxlength="300"></label>
   </div>`;
 }
@@ -511,7 +604,8 @@ const GOALS = ["Perder grasa", "Ganar músculo", "Rendir más en mi deporte", "P
 function readHealth() {
   const l = $("#f-lesion").value;
   return { p_has_injury: l === "" ? null : l === "si", p_injuries: $("#f-lesiones").value.replace(/[<>]/g, "").trim(),
-    p_goal: $("#f-objetivo").value || null, p_goal_detail: $("#f-objetivo-txt").value.replace(/[<>]/g, "").trim() };
+    p_goal: $("#f-objetivo").value || null, p_goal_detail: $("#f-objetivo-txt").value.replace(/[<>]/g, "").trim(),
+    p_zones: [...document.querySelectorAll(".f-zona:checked")].map((x) => x.value) };
 }
 document.addEventListener("change", (e) => { if (e.target.id === "f-lesion") { const b = $("#f-lesion-box"); if (b) b.hidden = e.target.value !== "si"; } });
 function readFields() {
@@ -612,6 +706,47 @@ async function renderAthletes() {
       ${accessPill(a)}</button>`).join("") : `<div class="empty"><b>Todavía no hay atletas.</b><br>Pásales el enlace de la app para que creen su cuenta.</div>`}</div>`;
 }
 
+// Plan personalizado del atleta: lo automático y los retoques del entrenador
+function customHTML() {
+  const a = detail?.a, pr = detail?.prog; if (!a || !pr?.days) return "";
+  const cu = detail.custom || {}, pz = personalFor({ ...a, custom: cu }, a.program_id || 1);
+  const autoOn = cu.auto !== false, setsSel = Number.isInteger(cu.sets) ? String(cu.sets) : "auto";
+  const day = (d) => {
+    let changed = 0;
+    const rows = "ABC".split("").map((v) => { const used = new Set(); return `<div class="label" style="margin-top:10px">Rutina ${v}</div>` + (d.ex[v] || []).map((e0, i) => {
+      const id = `${d.key}|${v}|${i}`, r = personalEx(pz, d.key, v, i, e0, used), mine = !!cu.swaps?.[id];
+      if (!r || r.tag) changed++;
+      if (detail.editing === id) return `<div class="edrow" style="margin-top:6px"><div class="grid2">
+          <label class="field full"><span class="label">Ejercicio para ${esc(a.name)}</span><input id="cx-n" maxlength="120" value="${esc(r ? r.e[0] : e0[0])}"></label>
+          <label class="field full"><span class="label">Indicación</span><input id="cx-c" maxlength="300" value="${esc(r ? r.e[1] : e0[1])}"></label>
+          <label class="field full"><span class="label">Vídeo: enlace de YouTube o palabras para buscar</span><input id="cx-v" maxlength="300" value="${esc(r ? r.e[3] : e0[3])}"></label></div>
+          <div class="row" style="margin-top:8px"><button class="btn sm" data-cs="${esc(id)}">Guardar para ${esc(a.name)}</button><button class="btn ghost sm" data-cc="1">Cancelar</button></div></div>`;
+      return `<div class="row" style="justify-content:space-between;gap:8px;padding:7px 0;border-top:1px solid var(--line)">
+        <span style="min-width:0;flex:1;font-size:14px">${r ? esc(r.e[0]) : `<s class="muted">${esc(e0[0])}</s> <span class="muted">· quitado</span>`}${r && r.tag ? `<br><small style="color:var(--ball-deep)">↻ ${esc(r.tag)}</small>` : ""}</span>
+        <span class="row" style="gap:4px">${mine ? `<button class="btn ghost sm" data-cr="${esc(id)}">Restaurar</button>` : `<button class="btn ghost sm" data-cx="${esc(id)}">Cambiar</button><button class="btn danger sm" data-cq="${esc(id)}" aria-label="Quitar ${esc(e0[0])}">Quitar</button>`}</span></div>`;
+    }).join(""); }).join("");
+    return `<details style="margin-top:10px" ${detail.open?.has(d.key) ? "open" : ""} data-cday="${esc(d.key)}"><summary><b>${esc(d.title)}</b> <span class="muted" style="font-size:13px">${changed ? `· ${changed} cambio${changed > 1 ? "s" : ""}` : ""}</span></summary>${rows}</details>`;
+  };
+  return `<div class="panel" id="customPanel"><h3>Plan personalizado</h3>
+    <p class="muted" style="font-size:14px;margin:4px 0 10px">La app adapta el plan a su objetivo y a su lesión. Aquí lo ves y puedes cambiar o quitar ejercicios solo para ${esc(a.name)}.</p>
+    <div class="label">Adaptación automática</div>
+    <div class="chips" style="margin-top:6px"><button class="chip" data-cauto="1" aria-pressed="${autoOn}">Activada</button><button class="chip" data-cauto="0" aria-pressed="${!autoOn}">Desactivada</button></div>
+    <div class="label" style="margin-top:12px">Series</div>
+    <div class="chips" style="margin-top:6px">${[["auto", "Según objetivo"], ["-1", "−1 serie"], ["0", "Normal"], ["1", "+1 serie"]].map(([k, n]) => `<button class="chip" data-csets="${k}" aria-pressed="${setsSel === k}">${n}</button>`).join("")}</div>
+    ${pz.notes.length ? `<ul style="margin:12px 0 0;padding-left:18px;font-size:14px">${pz.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : `<p class="muted" style="font-size:14px;margin:12px 0 0">Sin adaptaciones: el atleta no ha indicado objetivo ni lesión por zonas.</p>`}
+    ${pr.days.map(day).join("")}
+    <div id="cxMsg" class="err"></div></div>`;
+}
+async function saveCustom(cu) {
+  const clean = { ...cu }; if (clean.swaps && !Object.keys(clean.swaps).length) delete clean.swaps;
+  if (clean.auto !== false) delete clean.auto; if (!Number.isInteger(clean.sets)) delete clean.sets;
+  const val = Object.keys(clean).length ? clean : null;
+  await rpc("admin_set_athlete_custom", { p_user: detail.a.id, p_custom: val });
+  detail.custom = val || {}; detail.a.custom = val; const x = athletes.find((y) => y.id === detail.a.id); if (x) x.custom = val;
+}
+function redrawCustom() { const el = $("#customPanel"); if (el) el.outerHTML = customHTML(); }
+document.addEventListener("toggle", (e) => { const k = e.target.dataset && e.target.dataset.cday; if (k && detail) { detail.open ||= new Set(); e.target.open ? detail.open.add(k) : detail.open.delete(k); } }, true);
+
 // Días de entreno del atleta: un día de la semana para cada sesión
 // Peso saludable según la altura (IMC 18,5–24,9) y resumen de objetivo y lesiones, solo para el entrenador
 function weightInfo(a) {
@@ -657,7 +792,7 @@ async function renderAthlete() {
   try { [r, s, prog] = await Promise.all([fetchRecords(a.id), q(sb.from("sessions_done").select("week,day").eq("user_id", a.id)), loadProgram(a.program_id || 1).catch(() => null)]); }
   catch (e) { $("#app").innerHTML = `<div class="empty">${esc(e.message)}</div>`; return; }
   if (tab !== "atletas" || openId !== a.id) return;
-  if (!detail || detail.a.id !== a.id || !detail.sched) detail = { a, sched: { ...(a.schedule || {}) } };
+  if (!detail || detail.a.id !== a.id || !detail.sched) detail = { a, sched: { ...(a.schedule || {}) }, custom: JSON.parse(JSON.stringify(a.custom || {})), open: new Set() };
   detail = { ...detail, a, loads: r.l, tests: r.t, prog };
   const t = todayISO();
   $("#app").innerHTML = `
@@ -678,6 +813,8 @@ async function renderAthlete() {
     <p class="muted" style="font-size:14px;margin:4px 0 10px">El atleta solo ve el programa que elijas aquí. Sus sesiones hechas, cargas y tests se conservan.</p>
     <div class="chips">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-ath-prog="${id}" aria-pressed="${+id === (a.program_id || 1)}">${esc(n)}</button>`).join("")}</div>
     <div id="progMsg" class="err"></div></div>
+
+  ${customHTML()}
 
   ${schedHTML()}
 
@@ -913,6 +1050,23 @@ document.addEventListener("click", async (e) => {
     if (!me.is_admin) return;
     if (tab === "editor" && (await edClick(t))) return;
     if (t.dataset.open) { openId = t.dataset.open; detail = null; return renderAthlete(); }
+    if (t.dataset.cauto || t.dataset.csets || t.dataset.cq || t.dataset.cr || t.dataset.cs) {
+      const cu = JSON.parse(JSON.stringify(detail.custom || {})); cu.swaps ||= {};
+      if (t.dataset.cauto) cu.auto = t.dataset.cauto === "1";
+      if (t.dataset.csets) cu.sets = t.dataset.csets === "auto" ? undefined : +t.dataset.csets;
+      if (t.dataset.cq) cu.swaps[t.dataset.cq] = { skip: true };
+      if (t.dataset.cr) delete cu.swaps[t.dataset.cr];
+      if (t.dataset.cs) {
+        const n = $("#cx-n").value.replace(/[<>]/g, "").trim(); if (n.length < 2) { $("#cxMsg").textContent = "Escribe el nombre del ejercicio."; return; }
+        cu.swaps[t.dataset.cs] = { n, c: $("#cx-c").value.replace(/[<>]/g, "").trim(), v: $("#cx-v").value.replace(/[<>]/g, "").trim() };
+      }
+      t.disabled = true;
+      try { await saveCustom(cu); detail.editing = null; toast("Guardado. El atleta ya lo ve."); redrawCustom(); }
+      catch (err) { $("#cxMsg").textContent = err.message; t.disabled = false; }
+      return;
+    }
+    if (t.dataset.cx) { detail.editing = t.dataset.cx; redrawCustom(); $("#cx-n")?.focus(); return; }
+    if (t.dataset.cc) { detail.editing = null; redrawCustom(); return; }
     if (t.dataset.sched) {
       const [k, i] = t.dataset.sched.split("|"); detail.sched = { ...(detail.sched || {}), [k]: +i };
       const box = t.closest(".panel"); box.outerHTML = schedHTML(); return;
