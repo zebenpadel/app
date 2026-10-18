@@ -381,8 +381,8 @@ function renderPlan() {
       <div class="note">${esc(P.warmNote || "Rueda despacio (unos 2–3 cm por segundo) y para 10–20 s en los puntos cargados. Evita rodar sobre articulaciones y zona lumbar. Un tobillo con buena dorsiflexión frena mejor en las salidas laterales y protege rodilla y tendón de Aquiles. Deja al menos 48 h entre la sesión de explosividad y un partido de competición.")}</div>
     </div>
     <h2>${showAllDays || !planned ? "Sesiones" : "Tu sesión"}</h2>${days}` : ""}${hasComp() ? `<div class="banner" style="margin-top:18px">¿Semana de partidos o día de competición? Lo tienes en la pestaña <button class="linkbtn" data-tab="competicion">Competición</button>.</div>` : ""}
-    <h2>Tu nivel</h2>
-    <div class="phase"><b>${esc(LV[level])}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes cambiarlo en Perfil para ver otros niveles." : "Si crees que no es el tuyo, cámbialo en Perfil o coméntalo con Zeben."}</div></div>`;
+    <h2>${planProg === 1 ? "Tu nivel" : "Tu experiencia"}</h2>
+    <div class="phase"><b>${esc(planProg === 1 ? LV[level] : LEVEL_TEXT[LV[level]] || LV[level])}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes cambiarlo en Perfil para ver otros niveles." : "Si crees que no es el tuyo, cámbialo en Perfil o coméntalo con Zeben."}</div></div>`;
 }
 
 // Pestaña Competición: semana de competición y día de partido, aparte del plan diario
@@ -486,11 +486,17 @@ async function renderMyProgress() {
 // =====================================================================
 //  PERFIL
 // =====================================================================
-function athleteFields(a, levels) {
+// Nivel y posición: en pádel se ven tal cual; en los demás programas, nivel de experiencia y sin posición
+const LEVEL_TEXT = { "Iniciación": "Empiezo ahora o hace mucho que no entreno", "Intermedio": "Entreno de vez en cuando", "Avanzado": "Entreno con regularidad", "Competición": "Entreno mucho o compito" };
+function athleteFields(a, levels, progId = 1) {
+  const padel = +progId === 1;
+  const side = padel
+    ? `<label class="field"><span class="label">Posición en pista</span><select id="f-lado">${SIDES.map((l) => `<option ${a.side === l ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>`
+    : `<input type="hidden" id="f-lado" value="${esc(SIDES.includes(a.side) ? a.side : SIDES[0])}">`;
   return `<div class="grid2">
     <label class="field full"><span class="label">Nombre</span><input id="f-nombre" value="${esc(a.name)}" maxlength="40"></label>
-    <label class="field"><span class="label">Nivel</span><select id="f-nivel">${levels.map((l) => `<option ${a.level === l ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
-    <label class="field"><span class="label">Posición</span><select id="f-lado">${SIDES.map((l) => `<option ${a.side === l ? "selected" : ""}>${esc(l)}</option>`).join("")}</select></label>
+    <label class="field ${padel ? "" : "full"}"><span class="label">${padel ? "Nivel de pádel" : "Experiencia entrenando"}</span><select id="f-nivel">${levels.map((l) => `<option value="${esc(l)}" ${a.level === l ? "selected" : ""}>${esc(padel ? l : LEVEL_TEXT[l] || l)}</option>`).join("")}</select></label>
+    ${side}
     <label class="field"><span class="label">Edad (años)</span><input id="f-edad" type="number" inputmode="numeric" min="10" max="90" value="${esc(a.age ?? "")}"></label>
     <label class="field"><span class="label">Altura (cm)</span><input id="f-altura" type="number" inputmode="decimal" min="120" max="230" value="${esc(a.height_cm ?? "")}"></label>
     <label class="field"><span class="label">Peso corporal (kg)</span><input id="f-peso" type="number" inputmode="decimal" step="0.1" min="30" max="200" value="${esc(a.weight_kg ?? "")}"></label>
@@ -510,7 +516,7 @@ async function renderProfile() {
   $("#app").innerHTML = `
   <div class="row" style="gap:12px;margin-top:22px"><span class="avatar">${esc(initials(me.name))}</span>
     <div style="min-width:0;flex:1"><h2 style="margin:0">${esc(me.name)}</h2>${status}</div></div>
-  <div class="panel"><h3>Mis datos</h3><div style="margin-top:12px">${athleteFields(me, P?.levels || LEVELS_DEFAULT)}</div>
+  <div class="panel"><h3>Mis datos</h3><div style="margin-top:12px">${athleteFields(me, P?.levels || LEVELS_DEFAULT, myProg())}</div>
     <div class="row" style="margin-top:14px"><button class="btn" id="saveMe">Guardar</button></div><div id="meMsg" class="err"></div></div>
   <div class="panel"><h3>Avisos en este móvil</h3>
     <p class="muted" style="font-size:14px;margin:4px 0 10px">${me.is_admin ? "Te avisa cuando se apunta un atleta nuevo y cuando la app tiene un error." : "Te avisa cuando Zeben active tu plan."} En iPhone, primero añade la app a la pantalla de inicio.</p>
@@ -624,7 +630,7 @@ async function renderAthlete() {
   $("#app").innerHTML = `
   <button class="back" id="back">← Volver a atletas</button>
   <div class="row" style="gap:12px;margin-top:6px"><span class="avatar">${esc(initials(a.name))}</span>
-    <div style="min-width:0;flex:1"><h2 style="margin:0">${esc(a.name)}</h2>${accessPill(a)} <span class="muted" style="font-size:13px">${esc(a.level)} · ${esc(a.side)}</span></div></div>
+    <div style="min-width:0;flex:1"><h2 style="margin:0">${esc(a.name)}</h2>${accessPill(a)} <span class="muted" style="font-size:13px">${esc(a.level)}${(a.program_id || 1) === 1 ? ` · ${esc(a.side)}` : ""}</span></div></div>
   <div class="stats">
     <div class="stat"><div class="label">Edad</div><div class="v">${a.age ?? "—"}<small>años</small></div></div>
     <div class="stat"><div class="label">Altura</div><div class="v">${a.height_cm ?? "—"}<small>cm</small></div></div>
@@ -652,7 +658,7 @@ async function renderAthlete() {
 
   ${P ? recordsHTML(detail.loads, detail.tests, a.weight_kg) : ""}
 
-  <div class="panel"><h3>Editar datos</h3><div style="margin-top:12px">${athleteFields(a, P?.levels || LEVELS_DEFAULT)}</div>
+  <div class="panel"><h3>Editar datos</h3><div style="margin-top:12px">${athleteFields(a, P?.levels || LEVELS_DEFAULT, a.program_id || 1)}</div>
     <div class="row" style="margin-top:14px"><button class="btn" id="saveEdit">Guardar cambios</button></div><div id="editMsg" class="err"></div></div>
 
   <div class="panel"><h3>PIN y cuenta</h3>
