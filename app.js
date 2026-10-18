@@ -283,20 +283,23 @@ async function start(opts = {}) {
   }
 }
 
+const hasComp = () => !!(P && ((P.competition?.sessions || []).length || (P.matchday?.blocks || []).length));
+const exRow = (w) => `<div class="ex"><span class="n">${esc(w[0])}</span><span class="rx" style="font-size:16px">${esc(w[1])}</span>${w[3] ? `<span class="cue">${esc(w[3])}</span>` : ""}${vid(w[2])}</div>`;
 function renderTabs() {
   const t = [["plan", "Mi plan"], ["progreso", "Progreso"], ["perfil", "Perfil"]];
   if (me.is_admin) t.unshift(["atletas", "Atletas"]), t.splice(2, 0, ["editor", "Editar plan"]), t.push(["errores", "Errores"]);
+  if (hasComp() || tab === "competicion") t.splice(t.findIndex(([k]) => k === "plan") + 1, 0, ["competicion", "Competición"]);
   $("#tabs").innerHTML = t.map(([k, l]) => `<button role="tab" aria-selected="${k === tab}" data-tab="${k}">${l}</button>`).join("");
 }
 function go(t) {
-  const allowed = ["plan", "progreso", "perfil"].concat(me.is_admin ? ["atletas", "editor", "errores"] : []);
+  const allowed = ["plan", "competicion", "progreso", "perfil"].concat(me.is_admin ? ["atletas", "editor", "errores"] : []);
   if (tab === "editor" && t !== "editor" && edDirty && !confirm("Tienes cambios del plan sin guardar. ¿Salir sin guardar?")) { renderTabs(); return; }
   if (t !== "editor") { ED = null; edDirty = false; }
   tab = allowed.includes(t) ? t : "plan";
   if (location.hash !== "#" + tab) history.replaceState(null, "", "#" + tab);
   renderTabs(); renderProgress();
   if (!me.consent_at) return renderConsent();
-  ({ plan: renderPlan, progreso: renderMyProgress, perfil: renderProfile, atletas: renderAthletes, editor: renderEditor, errores: renderErrors }[tab])();
+  ({ plan: renderPlan, competicion: renderCompetition, progreso: renderMyProgress, perfil: renderProfile, atletas: renderAthletes, editor: renderEditor, errores: renderErrors }[tab])();
   window.scrollTo(0, 0);
 }
 function renderProgress() {
@@ -374,9 +377,17 @@ function renderPlan() {
       ${P.warm?.length ? `<div class="sec">${esc(WS[0])}</div>${P.warm.map(row).join("")}` : ""}${P.ankle?.length ? `<div class="sec">${esc(WS[1])}</div>${P.ankle.map(row).join("")}` : ""}${P.mov?.length ? `<div class="sec">${esc(WS[2])}</div>${P.mov.map(row).join("")}` : ""}
       <div class="note">${esc(P.warmNote || "Rueda despacio (unos 2–3 cm por segundo) y para 10–20 s en los puntos cargados. Evita rodar sobre articulaciones y zona lumbar. Un tobillo con buena dorsiflexión frena mejor en las salidas laterales y protege rodilla y tendón de Aquiles. Deja al menos 48 h entre la sesión de explosividad y un partido de competición.")}</div>
     </div>
-    <h2>${showAllDays || !planned ? "Sesiones" : "Tu sesión"}</h2>${days}` : ""}${competitionHTML(row)}${matchdayHTML(row)}
+    <h2>${showAllDays || !planned ? "Sesiones" : "Tu sesión"}</h2>${days}` : ""}${hasComp() ? `<div class="banner" style="margin-top:18px">¿Semana de partidos o día de competición? Lo tienes en la pestaña <button class="linkbtn" data-tab="competicion">Competición</button>.</div>` : ""}
     <h2>Tu nivel</h2>
     <div class="phase"><b>${esc(LV[level])}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes cambiarlo en Perfil para ver otros niveles." : "Si crees que no es el tuyo, cámbialo en Perfil o coméntalo con Zeben."}</div></div>`;
+}
+
+// Pestaña Competición: semana de competición y día de partido, aparte del plan diario
+function renderCompetition() {
+  if (!P) { $("#app").innerHTML = lockedCard(); return; }
+  const progPick = me.is_admin ? `<div class="chips" style="margin-top:14px">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-comp-prog="${id}" aria-pressed="${+id === planProg}">${esc(n)}</button>`).join("")}</div>` : "";
+  const body = competitionHTML(exRow) + matchdayHTML(exRow);
+  $("#app").innerHTML = `${progPick}${body || `<div class="empty" style="margin-top:24px"><b>Este programa no tiene sesiones de competición.</b>${me.is_admin ? "<br>Puedes crearlas en Editar plan." : ""}</div>`}`;
 }
 
 // Sesiones para semanas de competición
@@ -882,7 +893,8 @@ document.addEventListener("click", async (e) => {
       catch (err) { $("#progMsg").textContent = err.message; t.disabled = false; }
       return;
     }
-    if (t.dataset.planProg) { const id = +t.dataset.planProg; t.disabled = true; const d = await loadProgram(id); if (!d) { t.disabled = false; return toast("Ese programa todavía no existe en la base de datos"); } planProg = id; P = d; return renderPlan(); }
+    if (t.dataset.planProg) { const id = +t.dataset.planProg; t.disabled = true; const d = await loadProgram(id); if (!d) { t.disabled = false; return toast("Ese programa todavía no existe en la base de datos"); } planProg = id; P = d; renderTabs(); return renderPlan(); }
+    if (t.dataset.compProg) { const id = +t.dataset.compProg; t.disabled = true; const d = await loadProgram(id); if (!d) { t.disabled = false; return toast("Ese programa todavía no existe en la base de datos"); } planProg = id; P = d; renderTabs(); return renderCompetition(); }
     if (t.id === "back") { openId = null; detail = null; return renderAthletes(); }
     if (t.dataset.plus) {
       const cur = $("#ac-until").value; const base = cur && cur > todayISO() ? cur : todayISO();
