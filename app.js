@@ -612,7 +612,7 @@ function athleteFields(a, levels, progId = 1) {
     <label class="field full"><span class="label">¿Tienes alguna lesión, dolor o patología?</span><select id="f-lesion"><option value="">Elige…</option><option value="no" ${a.has_injury === false ? "selected" : ""}>No</option><option value="si" ${a.has_injury ? "selected" : ""}>Sí</option></select></label>
     <label class="field full" id="f-lesion-box" ${a.has_injury ? "" : "hidden"}><span class="label">¿Cuál? Desde cuándo y si te sigue molestando</span><input id="f-lesiones" value="${esc(a.injuries ?? "")}" maxlength="400" placeholder="Ej.: tendinitis rotuliana derecha desde 2024, hipertensión, asma…">
       <span class="label" style="margin-top:10px;display:block">¿Qué zona? Marca todas las que te molesten</span>
-      <span class="chips" style="margin-top:6px">${Object.entries(ZONES).map(([k, n]) => `<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" class="f-zona" value="${k}" ${(a.injury_zones || []).includes(k) ? "checked" : ""}> ${esc(n)}</label>`).join("")}</span></label>
+      <span class="pick" style="margin-top:6px">${Object.entries(ZONES).map(([k, n]) => `<label class="pick-i"><input type="checkbox" class="f-zona" value="${k}" ${(a.injury_zones || []).includes(k) ? "checked" : ""}> ${esc(n)}</label>`).join("")}</span></label>
     <label class="field full"><span class="label">Otras notas</span><input id="f-notas" value="${esc(a.notes ?? "")}" maxlength="300"></label>
   </div>`;
 }
@@ -624,9 +624,22 @@ function weekFields(a, padel) {
   const pd = a.padel_dows || [];
   return fis + `<label class="field full"><span class="label">¿Cuántos días a la semana juegas o entrenas pádel?</span><select id="f-padel"><option value="">Elige…</option>${opt(0, "Ahora mismo ninguno", a.padel_days)}${[1, 2, 3, 4, 5, 6, 7].map((n) => opt(n, n === 1 ? "1 día" : `${n} días`, a.padel_days)).join("")}</select></label>
     <label class="field full" id="f-padel-box" ${a.padel_days > 0 ? "" : "hidden"}><span class="label">¿Qué días juegas normalmente? Marca los que sean</span>
-      <span class="chips" style="margin-top:6px">${DOW_SHORT.map((d, i) => `<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" class="f-pdia" value="${i}" ${pd.includes(i) ? "checked" : ""}> ${d}</label>`).join("")}</span>
+      <span class="pick days" style="margin-top:6px">${DOW_SHORT.map((d, i) => `<label class="pick-i"><input type="checkbox" class="f-pdia" value="${i}" ${pd.includes(i) ? "checked" : ""}> ${d}</label>`).join("")}</span>
       <span class="muted" style="display:block;font-size:13px;margin-top:6px">Así coloco el físico para que llegues fresco a tus partidos.</span></label>`;
 }
+// Casillas de zonas y días: cuadrícula para que ningún nombre se corte en el móvil
+(() => { const st = document.createElement("style"); st.textContent = `
+.pick{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.pick.days{grid-template-columns:repeat(4,minmax(0,1fr))}
+.pick-i{display:flex;align-items:center;gap:8px;min-width:0;border:1px solid var(--line);background:var(--surface);color:var(--fg);border-radius:12px;padding:10px 12px;font-weight:600;font-size:15px;line-height:1.25;cursor:pointer;text-transform:none;letter-spacing:0}
+.pick.days .pick-i{justify-content:center;padding:10px 4px;gap:5px;font-size:14px}
+.pick-i input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--fg)}
+.pick-i:has(input:checked){border-color:var(--fg);background:var(--fg);color:var(--bg)}
+.pick-i:has(input:checked) input{accent-color:var(--bg)}
+.pick.days .pick-i{position:relative;padding:11px 2px}
+.pick.days input{position:absolute;opacity:0;pointer-events:none}
+.pick-i:has(input:focus-visible){outline:2px solid var(--fg);outline-offset:2px}
+@media (max-width:380px){.pick:not(.days){grid-template-columns:1fr}}`; document.head.appendChild(st); })();
 const GOALS = ["Perder grasa", "Ganar músculo", "Rendir más en mi deporte", "Preparar una competición", "Salud y bienestar", "Volver tras una lesión", "Otro"];
 function readHealth() {
   const l = $("#f-lesion").value;
