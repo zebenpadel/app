@@ -65,6 +65,14 @@ const plain = (x) => String(x || "").normalize("NFD").replace(/[\u0300-\u036f]/g
 const todayDow = () => (new Date().getDay() + 6) % 7;      // 0 = lunes
 let selDow = todayDow(), showAllDays = false;
 // Qué día de la semana es cada sesión según su campo "Día" (Lunes, Miércoles…)
+// Sesiones que hace cada atleta según sus días por semana (3–6). Sin elegir: las del programa sin las "extra".
+const FREQ_DAYS = { 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 3, 4], 6: [0, 1, 2, 3, 4, 5] };
+function sessionsFor(prog, a) {
+  if (!prog?.days) return [];
+  const n = a?.custom?.freq, list = n && prog.freq?.[n];
+  if (list) return list.map((k) => prog.days.find((d) => d.key === k)).filter(Boolean).map((d, i) => ({ ...d, title: String(d.title || "").replace(/^Día \d+\s*·\s*/i, ""), when: DOW[FREQ_DAYS[n]?.[i] ?? i] }));
+  return prog.days.filter((d) => !d.extra);
+}
 const dowDefault = (d) => { const w = plain(d.when); for (let i = 0; i < 7; i++) if (w.includes(plain(DOW[i]))) return i; return -1; };
 const dowOf = (d, sched) => { const v = (sched === undefined ? me?.schedule : sched)?.[d.key]; return Number.isInteger(v) && v >= 0 && v <= 6 ? v : dowDefault(d); };
 let myLoads = [], myTests = [];
@@ -306,7 +314,7 @@ function go(t) {
 }
 function renderProgress() {
   if (!P) { $("#progress").innerHTML = ""; return; }
-  const keys = new Set(P.days.map((d) => d.key)), total = P.days.length * 8;
+  const SD = sessionsFor(P, me), keys = new Set(SD.map((d) => d.key)), total = SD.length * 8;
   const n = Object.keys(done).filter((k) => keys.has(k.split("-").slice(1).join("-"))).length;
   $("#progress").innerHTML = `<div class="bar"><span style="width:${Math.round(n / total * 100)}%"></span></div><div class="ptxt">${n} de ${total} sesiones completadas</div>`;
 }
@@ -429,24 +437,25 @@ function renderPlan() {
   const p = phaseOf(week);
   const WS = P.warmSecs || ["1 · Foam roller", "2 · Movilidad de tobillo (dorsiflexión)", (P.ankle?.length ? 3 : 2) + " · Movilidad y activación"];
   const row = (w) => `<div class="ex"><span class="n">${esc(w[0])}</span><span class="rx" style="font-size:16px">${esc(w[1])}</span>${w[3] ? `<span class="cue">${esc(w[3])}</span>` : ""}${vid(w[2])}</div>`;
-  const byDow = P.days.map((d) => dowOf(d));
+  const SD = sessionsFor(P, me);
+  const byDow = SD.map((d) => dowOf(d));
   const planned = byDow.some((x) => x >= 0);
-  const todaySess = P.days.filter((d, i) => byDow[i] === selDow);
-  const visibleDays = (!planned || showAllDays ? P.days : todaySess).slice().sort((x, y) => (dowOf(x) < 0 ? 9 : dowOf(x)) - (dowOf(y) < 0 ? 9 : dowOf(y)));
+  const todaySess = SD.filter((d, i) => byDow[i] === selDow);
+  const visibleDays = (!planned || showAllDays ? SD : todaySess).slice().sort((x, y) => (dowOf(x) < 0 ? 9 : dowOf(x)) - (dowOf(y) < 0 ? 9 : dowOf(y)));
   const shortName = (d) => String(d.title || "").split("·").pop().trim();
   const dowPick = planned ? `<div class="weeks" style="grid-template-columns:repeat(7,minmax(0,1fr))">${DOW_SHORT.map((n, i) => {
-      const ds = P.days.filter((d, j) => byDow[j] === i);
+      const ds = SD.filter((d, j) => byDow[j] === i);
       const ok = ds.length && ds.every((d) => done[`${week}-${d.key}`]);
       return `<button class="wk" data-dow="${i}" aria-pressed="${!showAllDays && i === selDow}" aria-label="${DOW[i]}${ds.length ? ": " + esc(ds.map(shortName).join(", ")) : ": descanso"}">${n}<small>${ds.length ? (ok ? "✓ hecho" : "entreno") : "libre"}</small></button>`; }).join("")}</div>
     <div class="row" style="margin-top:8px;justify-content:space-between"><span class="muted" style="font-size:13px">${i18nToday()}</span><button class="btn ghost sm" data-alldays="1">${showAllDays ? "Ver solo un día" : "Ver toda la semana"}</button></div>` : "";
   const restCard = planned && !showAllDays && !todaySess.length ? `<div class="panel"><h3>${selDow === todayDow() ? "Hoy" : DOW[selDow]} toca descanso</h3>
     <p class="muted" style="font-size:14px;margin:6px 0 0">Recuperar también es entrenar. Si te apetece moverte, da un paseo de 20–30 minutos o haz la movilidad del calentamiento.</p>
-    <p style="font-size:14px;margin:8px 0 0">Tus sesiones de la semana: <b>${P.days.map((d, i) => byDow[i] >= 0 ? `${DOW[byDow[i]]} (${esc(shortName(d))})` : "").filter(Boolean).join(", ")}</b>.</p></div>` : "";
+    <p style="font-size:14px;margin:8px 0 0">Tus sesiones de la semana: <b>${SD.map((d, i) => byDow[i] >= 0 ? `${DOW[byDow[i]]} (${esc(shortName(d))})` : "").filter(Boolean).join(", ")}</b>.</p></div>` : "";
   const pz = personalFor(me, planProg);
   const days = visibleDays.map((d) => {
     const [main, extra] = personalDose(pz, P.dose[d.key][level][p]);
     const k = `${week}-${d.key}`; const isDone = !!done[k];
-    return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][P.days.indexOf(d) % 3]})">
+    return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][SD.findIndex((x) => x.key === d.key) % 3]})">
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
       ${((u) => d.ex[VAR(week)].map((e0, i) => personalEx(pz, d.key, VAR(week), i, e0, u)))(new Set()).filter(Boolean).map(({ e, tag }) => `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`).join("")}
@@ -457,10 +466,10 @@ function renderPlan() {
   const progPick = me.is_admin ? `<div class="chips" style="margin-top:10px">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-plan-prog="${id}" aria-pressed="${+id === planProg}">${esc(n)}</button>`).join("")}</div>` : "";
   $("#app").innerHTML = `
     <h2>Tu programa</h2>
-    <div class="phase"><b>${esc(P.name || progName(planProg))}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes ver cualquier programa." : `2 meses (8 semanas) · ${P.days.length} ${P.days.length === 1 ? "sesión" : "sesiones"} por semana.`}</div>${progPick}</div>
+    <div class="phase"><b>${esc(P.name || progName(planProg))}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes ver cualquier programa." : `2 meses (8 semanas) · ${SD.length} ${SD.length === 1 ? "sesión" : "sesiones"} por semana.`}</div>${progPick}</div>
     <h2>Semana del plan</h2>
     <p class="muted" style="font-size:13px;margin:-4px 0 0">A = primer mes · B = segundo mes</p>
-    <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${wkLabel(w)}">${wkLabel(w)}<small>${P.days.filter((d) => done[w + "-" + d.key]).length}/${P.days.length}</small></button>`; }).join("")}</div>
+    <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${wkLabel(w)}">${wkLabel(w)}<small>${SD.filter((d) => done[w + "-" + d.key]).length}/${SD.length}</small></button>`; }).join("")}</div>
     <div class="phase"><div class="label">Semana ${wkLabel(week)} · ${esc(LV[level])}</div><b>${esc(P.phases[p].name)} · ${esc(P.variants?.[VAR(week)] || "Rutina " + VAR(week))}</b><div class="muted" style="font-size:14px">${esc(P.phases[p].txt)}</div></div>
     ${pz.notes.length ? `<div class="panel" style="margin-top:14px"><h3>Plan adaptado a ti</h3><ul style="margin:8px 0 0;padding-left:18px;font-size:14px">${pz.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}
     ${planned ? `<h2>Día</h2>${dowPick}` : ""}
@@ -731,15 +740,18 @@ function customHTML() {
     <p class="muted" style="font-size:14px;margin:4px 0 10px">La app adapta el plan a su objetivo y a su lesión. Aquí lo ves y puedes cambiar o quitar ejercicios solo para ${esc(a.name)}.</p>
     <div class="label">Adaptación automática</div>
     <div class="chips" style="margin-top:6px"><button class="chip" data-cauto="1" aria-pressed="${autoOn}">Activada</button><button class="chip" data-cauto="0" aria-pressed="${!autoOn}">Desactivada</button></div>
+    <div class="label" style="margin-top:12px">Días por semana</div>
+    <div class="chips" style="margin-top:6px"><button class="chip" data-cfreq="def" aria-pressed="${!cu.freq}">Programa (${pr.days.filter((d) => !d.extra).length})</button>${Object.keys(pr.freq || {}).map((n) => `<button class="chip" data-cfreq="${n}" aria-pressed="${String(cu.freq) === n}">${n} días</button>`).join("")}</div>
+    ${(a.program_id || 1) === 5 ? `<p class="muted" style="font-size:13px;margin:6px 0 0">En post parto, como mucho 5 días.</p>` : ""}
     <div class="label" style="margin-top:12px">Series</div>
     <div class="chips" style="margin-top:6px">${[["auto", "Según objetivo"], ["-1", "−1 serie"], ["0", "Normal"], ["1", "+1 serie"]].map(([k, n]) => `<button class="chip" data-csets="${k}" aria-pressed="${setsSel === k}">${n}</button>`).join("")}</div>
     ${pz.notes.length ? `<ul style="margin:12px 0 0;padding-left:18px;font-size:14px">${pz.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : `<p class="muted" style="font-size:14px;margin:12px 0 0">Sin adaptaciones: el atleta no ha indicado objetivo ni lesión por zonas.</p>`}
-    ${pr.days.map(day).join("")}
+    ${sessionsFor(pr, { custom: cu }).map(day).join("")}
     <div id="cxMsg" class="err"></div></div>`;
 }
 async function saveCustom(cu) {
   const clean = { ...cu }; if (clean.swaps && !Object.keys(clean.swaps).length) delete clean.swaps;
-  if (clean.auto !== false) delete clean.auto; if (!Number.isInteger(clean.sets)) delete clean.sets;
+  if (clean.auto !== false) delete clean.auto; if (!Number.isInteger(clean.sets)) delete clean.sets; if (!Number.isInteger(clean.freq)) delete clean.freq;
   const val = Object.keys(clean).length ? clean : null;
   await rpc("admin_set_athlete_custom", { p_user: detail.a.id, p_custom: val });
   detail.custom = val || {}; detail.a.custom = val; const x = athletes.find((y) => y.id === detail.a.id); if (x) x.custom = val;
@@ -773,11 +785,12 @@ function healthHTML(a) {
 function schedHTML() {
   const pr = detail?.prog; if (!pr?.days) return "";
   const sc = detail.sched || {};
-  const used = {}; pr.days.forEach((d) => { const v = dowOf(d, sc); if (v >= 0) used[v] = (used[v] || 0) + 1; });
+  const SDa = sessionsFor(pr, { custom: detail.custom });
+  const used = {}; SDa.forEach((d) => { const v = dowOf(d, sc); if (v >= 0) used[v] = (used[v] || 0) + 1; });
   const rest = DOW.filter((_, i) => !used[i]);
   return `<div class="panel"><h3>Días de entreno</h3>
     <p class="muted" style="font-size:14px;margin:4px 0 10px">Elige qué día de la semana hace cada sesión. Puedes poner días seguidos y el descanso donde quieras.</p>
-    ${pr.days.map((d) => { const v = dowOf(d, sc); return `<div style="margin-top:10px"><b style="font-size:14px">${esc(d.title)}</b>
+    ${SDa.map((d) => { const v = dowOf(d, sc); return `<div style="margin-top:10px"><b style="font-size:14px">${esc(d.title)}</b>
       <div class="weeks" style="grid-template-columns:repeat(7,minmax(0,1fr));margin-top:6px">${DOW_SHORT.map((n, i) => `<button class="wk" data-sched="${esc(d.key)}|${i}" aria-pressed="${i === v}" aria-label="${esc(d.title)}: ${DOW[i]}">${n}</button>`).join("")}</div></div>`; }).join("")}
     ${Object.values(used).some((n) => n > 1) ? `<div class="banner" style="margin-top:10px">Hay dos sesiones el mismo día. Se verán juntas ese día.</div>` : ""}
     <p class="muted" style="font-size:13px;margin:10px 0 0">Descanso: ${rest.length ? rest.join(", ") : "ningún día"}.</p>
@@ -805,7 +818,7 @@ async function renderAthlete() {
     <div class="stat"><div class="label">Peso</div><div class="v">${a.weight_kg ?? "—"}<small>kg</small></div></div>
     <div class="stat"><div class="label">IMC</div><div class="v">${imc(a)}</div></div>
   </div>
-  <div class="banner">Sesiones hechas: <b>${detail.prog?.days ? s.filter((x) => detail.prog.days.some((d) => d.key === x.day)).length : s.length} de ${(detail.prog?.days?.length || 3) * 8}</b>${a.phone ? ` · Móvil: <b>${esc(a.phone)}</b>` : ""} · Alta: ${fmtDate(a.created_at)}</div>
+  <div class="banner">Sesiones hechas: <b>${detail.prog?.days ? ((sd) => `${s.filter((x) => sd.some((d) => d.key === x.day)).length} de ${sd.length * 8}`)(sessionsFor(detail.prog, { custom: detail.custom })) : `${s.length} de 24`}</b>${a.phone ? ` · Móvil: <b>${esc(a.phone)}</b>` : ""} · Alta: ${fmtDate(a.created_at)}</div>
   ${healthHTML(a)}
   ${a.notes ? `<div class="banner"><b>Notas:</b> ${esc(a.notes)}</div>` : ""}
 
@@ -909,11 +922,11 @@ async function renderEditor() {
   const days = ED.days.map((d, i) => {
     const dose = `<div class="tbl"><table><thead><tr><th>Fase</th>${LV.map((l) => `<th>${esc(l)}</th>`).join("")}<th>Descanso</th></tr></thead><tbody>${PH.map((p, pi) => `<tr><td><b>${esc(p.name)}</b></td>${LV.map((_, li) => `<td>${cellInput(`dose.${d.key}.${li}.${pi}`, ED.dose[d.key][li][pi], 120, 40)}</td>`).join("")}<td>${cellInput(`rest.${d.key}.${pi}`, ED.rest[d.key][pi], 90, 30)}</td></tr>`).join("")}</tbody></table></div>`;
     const weeksOf = (v) => [1, 2, 3, 4, 5, 6, 7, 8].filter((w) => "ABC"[(w - 1) % 3] === v).map(wkLabel).join(", ");
-    return sec(`s-day-${i}`, d.title, `<div class="row" style="justify-content:flex-end;margin-bottom:8px">${ED.days.length > 1 ? `<button class="btn danger sm" data-ed-delday="${i}">Quitar esta sesión</button>` : ""}</div><div class="grid2">${inp(`days.${i}.title`, d.title, "Nombre de la sesión")}${inp(`days.${i}.when`, d.when, "Día de la semana (Lunes, Martes…)")}${area(`days.${i}.note`, d.note, "Nota al final de la sesión")}</div>
+    return sec(`s-day-${i}`, d.title + (d.extra ? " · para 4–6 días" : ""), `<div class="row" style="justify-content:flex-end;margin-bottom:8px">${ED.days.length > 1 ? `<button class="btn danger sm" data-ed-delday="${i}">Quitar esta sesión</button>` : ""}</div><div class="grid2">${inp(`days.${i}.title`, d.title, "Nombre de la sesión")}${inp(`days.${i}.when`, d.when, "Día de la semana (Lunes, Martes…)")}${area(`days.${i}.note`, d.note, "Nota al final de la sesión")}</div>
       <h3 style="margin-top:14px">Series y repeticiones</h3><p class="muted" style="font-size:13px;margin:4px 0">Formato: «3×8 · RPE 7». Lo que va después del «·» sale como indicación.</p>${dose}
       ${"ABC".split("").map((v) => `<h3 style="margin-top:16px">Rutina ${v} <span class="muted" style="font:500 13px var(--body)">· semanas ${weeksOf(v)}</span></h3>${edList(`days.${i}.ex.${v}`, "day")}`).join("")}`);
   }).join("");
-  const addDay = ED.days.length < 7 ? `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><span class="muted" style="font-size:14px">${ED.days.length} ${ED.days.length === 1 ? "sesión" : "sesiones"} por semana · máximo 7</span><button class="btn sm" id="edAddDay">+ Añadir sesión</button></div></div>` : `<div class="banner">Este programa ya tiene 7 sesiones por semana (una cada día).</div>`;
+  const addDay = ED.days.length < 10 ? `<div class="panel"><div class="row" style="justify-content:space-between;align-items:center"><span class="muted" style="font-size:14px">${ED.days.length} ${ED.days.length === 1 ? "sesión" : "sesiones"} en este programa · máximo 10</span><button class="btn sm" id="edAddDay">+ Añadir sesión</button></div></div>` : `<div class="banner">Este programa ya tiene 10 sesiones, el máximo.</div>`;
   const phases = sec("s-phases", "Fases del plan", PH.map((p, pi) => `<div class="grid2" style="margin-bottom:10px">${inp(`phases.${pi}.name`, p.name, `Fase ${pi + 1} · semanas ${p.weeks.map(wkLabel).join(", ")}`)}${area(`phases.${pi}.txt`, p.txt, "Explicación")}</div>`).join(""));
   const WS = ED.warmSecs || ["1 · Foam roller", "2 · Movilidad de tobillo", "3 · Movilidad y activación"];
   const warm = sec("s-warm", ED.warmTitle || "Calentamiento", `<h3>${esc(WS[0])}</h3>${edList("warm", "row")}<h3 style="margin-top:16px">${esc(WS[1])}</h3>${edList("ankle", "row")}<h3 style="margin-top:16px">${esc(WS[2])}</h3>${edList("mov", "row")}`);
@@ -952,7 +965,7 @@ async function edClick(t) {
   }
   if (t.dataset.edAdd) { const [p, type] = t.dataset.edAdd.split("|"); getAt(ED, p).push(TPL[type]()); edMark(); renderEditor(); return true; }
   if (t.id === "edAddDay") {
-    if (ED.days.length >= 7) return true;
+    if (ED.days.length >= 10) return true;
     const keys = new Set(ED.days.map((d) => d.key)); let n = ED.days.length + 1; while (keys.has("d" + n)) n++;
     const key = "d" + n, used = new Set(ED.days.map((d) => dowDefault(d)));
     const free = [0, 1, 2, 3, 4, 5, 6].find((x) => !used.has(x)) ?? 0;
@@ -1050,6 +1063,19 @@ document.addEventListener("click", async (e) => {
     if (!me.is_admin) return;
     if (tab === "editor" && (await edClick(t))) return;
     if (t.dataset.open) { openId = t.dataset.open; detail = null; return renderAthlete(); }
+    if (t.dataset.cfreq) {
+      const cu = JSON.parse(JSON.stringify(detail.custom || {}));
+      if (t.dataset.cfreq === "def") delete cu.freq; else cu.freq = +t.dataset.cfreq;
+      t.disabled = true;
+      try {
+        await saveCustom(cu);
+        if (detail.a.schedule) { await rpc("admin_set_athlete_schedule", { p_user: detail.a.id, p_schedule: null }); detail.a.schedule = null; detail.sched = {}; }
+        athletes = await q(sb.from("profiles").select("*").order("name"));
+        toast(cu.freq ? `${cu.freq} días por semana. Los días se han repartido solos; puedes moverlos en Días de entreno.` : "Vuelve a las sesiones del programa.");
+        renderAthlete();
+      } catch (err) { $("#cxMsg").textContent = err.message; t.disabled = false; }
+      return;
+    }
     if (t.dataset.cauto || t.dataset.csets || t.dataset.cq || t.dataset.cr || t.dataset.cs) {
       const cu = JSON.parse(JSON.stringify(detail.custom || {})); cu.swaps ||= {};
       if (t.dataset.cauto) cu.auto = t.dataset.cauto === "1";
