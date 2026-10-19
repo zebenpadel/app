@@ -349,7 +349,7 @@ function lockedCard() {
 //  PLAN PERSONALIZADO: se adapta solo al objetivo y a las zonas de lesión,
 //  y el entrenador puede cambiar o quitar ejercicios para cada atleta
 // =====================================================================
-const ZONES = { rodilla: "Rodilla", tobillo: "Tobillo", hombro: "Hombro", lumbar: "Zona lumbar", cadera: "Cadera", muneca: "Codo o muñeca", cuello: "Cuello" };
+const ZONES = { rodilla: "Rodilla", tobillo: "Tobillo", hombro: "Hombro", lumbar: "Zona lumbar", cadera: "Cadera", aductor: "Aductores", isquio: "Isquiotibiales", muneca: "Codo o muñeca", cuello: "Cuello" };
 const X = (n, c, v) => ({ n, c, v });
 // Para cada zona: [palabras del ejercicio, alternativa]. Gana la primera que encaje.
 const INJ_RULES = {
@@ -377,6 +377,14 @@ const INJ_RULES = {
   cadera: [
     [/salto|jump|pliometr|burpee|bound|rebote/, X("Puente de glúteo con banda", "Sin impacto. Empuja las rodillas hacia fuera contra la banda.", "puente de glúteo con banda")],
     [/sentadilla profunda|zancada|lunge|bulgara|split|step-up|step up|90\/90|aductor|lateral|pistol/, [X("Puente de glúteo a una pierna", "Recorrido corto y sin dolor en la cadera.", "puente de glúteo a una pierna"), X("Abducción de cadera con banda", "Rango cómodo y sin dolor.", "abducción de cadera con banda"), X("Bird dog", "Estabilidad de cadera sin carga.", "bird dog ejercicio técnica")]],
+  ],
+  aductor: [
+    [/copenhague|copenhagen|aductor|sumo|zancada lateral|lateral lunge|cosaco|cossack|90\/90|apertura de piernas/, X("Isometría de aductores con balón", "Tumbado boca arriba, rodillas dobladas y un balón entre ellas. Aprieta 5 s al 50 % y suelta. Sin dolor.", "aductor squeeze isométrico balón")],
+    [/salto lateral|desplazamiento|shuffle|cambio de direccion|agilidad|t test|estrella|conos|reaccion|sprint|split|skater|patinador/, X("Bici estática", "Mismo tiempo y esfuerzo, sin aperturas ni cambios de dirección mientras te molesta el aductor.", "bicicleta estática intervalos")],
+  ],
+  isquio: [
+    [/nordic|nordico|curl femoral|curl de isquio|isquio|peso muerto|buenos dias|good morning|swing|bisagra|hip hinge/, X("Puente de glúteo isométrico", "Talones cerca del cuerpo, aguanta arriba 20–30 s. Sin dolor en la parte de atrás del muslo.", "puente de glúteo isométrico")],
+    [/sprint|carrera|salto vertical|squat jump|broad jump|split jump|saltos en zancada|salto de longitud|bound|aceleraci|drop/, X("Bici estática o elíptica", "Mismo esfuerzo sin sprints ni saltos explosivos mientras te molesta el isquio.", "bicicleta estática intervalos")],
   ],
   muneca: [
     [/flexion|fondos|plancha|toques de hombro|burpee|rueda abdominal|mountain|escaladores/, X("Plancha sobre antebrazos", "Apoyo en antebrazos: la muñeca no carga peso.", "plancha abdominal técnica")],
