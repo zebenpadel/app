@@ -69,9 +69,15 @@ let selDow = todayDow(), showAllDays = false;
 const FREQ_DAYS = { 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 3, 4], 6: [0, 1, 2, 3, 4, 5] };
 function sessionsFor(prog, a) {
   if (!prog?.days) return [];
-  const n = a?.custom?.freq, list = n && prog.freq?.[n];
+  const n = a?.custom?.freq || autoFreq(prog, a), list = n && prog.freq?.[n];
   if (list) return list.map((k) => prog.days.find((d) => d.key === k)).filter(Boolean).map((d, i) => ({ ...d, title: String(d.title || "").replace(/^Día \d+\s*·\s*/i, ""), when: DOW[FREQ_DAYS[n]?.[i] ?? i] }));
   return prog.days.filter((d) => !d.extra);
+}
+// Días que pidió el atleta en su ficha (si el entrenador no ha elegido otros). 2 días o menos: el programa base.
+function autoFreq(prog, a) {
+  const w = +a?.want_days, ks = Object.keys(prog?.freq || {}).map(Number).sort((x, y) => x - y);
+  if (!w || w < 3 || !ks.length) return null;
+  return ks.filter((k) => k <= w).pop() || null;
 }
 const dowDefault = (d) => { const w = plain(d.when); for (let i = 0; i < 7; i++) if (w.includes(plain(DOW[i]))) return i; return -1; };
 const dowOf = (d, sched) => { const v = (sched === undefined ? me?.schedule : sched)?.[d.key]; return Number.isInteger(v) && v >= 0 && v <= 6 ? v : dowDefault(d); };
@@ -602,6 +608,7 @@ function athleteFields(a, levels, progId = 1) {
     <label class="field"><span class="label">Peso corporal (kg)</span><input id="f-peso" type="number" inputmode="decimal" step="0.1" min="30" max="200" value="${esc(a.weight_kg ?? "")}"></label>
     <label class="field full"><span class="label">Objetivo final</span><select id="f-objetivo"><option value="">Elige tu objetivo…</option>${GOALS.map((g) => `<option ${a.goal === g ? "selected" : ""}>${esc(g)}</option>`).join("")}</select></label>
     <label class="field full"><span class="label">Cuéntalo con tus palabras (opcional)</span><input id="f-objetivo-txt" value="${esc(a.goal_detail ?? "")}" maxlength="300" placeholder="Ej.: bajar 5 kg antes del verano, ganar el torneo de mi club…"></label>
+    ${weekFields(a, padel)}
     <label class="field full"><span class="label">¿Tienes alguna lesión, dolor o patología?</span><select id="f-lesion"><option value="">Elige…</option><option value="no" ${a.has_injury === false ? "selected" : ""}>No</option><option value="si" ${a.has_injury ? "selected" : ""}>Sí</option></select></label>
     <label class="field full" id="f-lesion-box" ${a.has_injury ? "" : "hidden"}><span class="label">¿Cuál? Desde cuándo y si te sigue molestando</span><input id="f-lesiones" value="${esc(a.injuries ?? "")}" maxlength="400" placeholder="Ej.: tendinitis rotuliana derecha desde 2024, hipertensión, asma…">
       <span class="label" style="margin-top:10px;display:block">¿Qué zona? Marca todas las que te molesten</span>
@@ -609,14 +616,28 @@ function athleteFields(a, levels, progId = 1) {
     <label class="field full"><span class="label">Otras notas</span><input id="f-notas" value="${esc(a.notes ?? "")}" maxlength="300"></label>
   </div>`;
 }
+// Disponibilidad semanal: días de físico y, en pádel, días de pista
+function weekFields(a, padel) {
+  const opt = (v, t, cur) => `<option value="${v}" ${String(cur ?? "") === String(v) ? "selected" : ""}>${t}</option>`;
+  const fis = `<label class="field full"><span class="label">${padel ? "¿Cuántos días a la semana puedes entrenar el físico (gimnasio)?" : "¿Cuántos días a la semana puedes entrenar?"}</span><select id="f-dias"><option value="">Elige…</option>${[2, 3, 4, 5, 6].map((n) => opt(n, `${n} días`, a.want_days)).join("")}</select></label>`;
+  if (!padel) return fis + `<input type="hidden" id="f-padel" value=""><span hidden id="f-padel-box"></span>`;
+  const pd = a.padel_dows || [];
+  return fis + `<label class="field full"><span class="label">¿Cuántos días a la semana juegas o entrenas pádel?</span><select id="f-padel"><option value="">Elige…</option>${opt(0, "Ahora mismo ninguno", a.padel_days)}${[1, 2, 3, 4, 5, 6, 7].map((n) => opt(n, n === 1 ? "1 día" : `${n} días`, a.padel_days)).join("")}</select></label>
+    <label class="field full" id="f-padel-box" ${a.padel_days > 0 ? "" : "hidden"}><span class="label">¿Qué días juegas normalmente? Marca los que sean</span>
+      <span class="chips" style="margin-top:6px">${DOW_SHORT.map((d, i) => `<label class="chip" style="display:inline-flex;gap:6px;align-items:center"><input type="checkbox" class="f-pdia" value="${i}" ${pd.includes(i) ? "checked" : ""}> ${d}</label>`).join("")}</span>
+      <span class="muted" style="display:block;font-size:13px;margin-top:6px">Así coloco el físico para que llegues fresco a tus partidos.</span></label>`;
+}
 const GOALS = ["Perder grasa", "Ganar músculo", "Rendir más en mi deporte", "Preparar una competición", "Salud y bienestar", "Volver tras una lesión", "Otro"];
 function readHealth() {
   const l = $("#f-lesion").value;
   return { p_has_injury: l === "" ? null : l === "si", p_injuries: $("#f-lesiones").value.replace(/[<>]/g, "").trim(),
     p_goal: $("#f-objetivo").value || null, p_goal_detail: $("#f-objetivo-txt").value.replace(/[<>]/g, "").trim(),
-    p_zones: [...document.querySelectorAll(".f-zona:checked")].map((x) => x.value) };
+    p_zones: [...document.querySelectorAll(".f-zona:checked")].map((x) => x.value),
+    p_want_days: $("#f-dias")?.value ? +$("#f-dias").value : null,
+    p_padel_days: $("#f-padel")?.value !== "" && $("#f-padel") ? +$("#f-padel").value : null,
+    p_padel_dows: $("#f-padel")?.value > 0 ? [...document.querySelectorAll(".f-pdia:checked")].map((x) => +x.value) : null };
 }
-document.addEventListener("change", (e) => { if (e.target.id === "f-lesion") { const b = $("#f-lesion-box"); if (b) b.hidden = e.target.value !== "si"; } });
+document.addEventListener("change", (e) => { if (e.target.id === "f-lesion") { const b = $("#f-lesion-box"); if (b) b.hidden = e.target.value !== "si"; } if (e.target.id === "f-padel") { const b = $("#f-padel-box"); if (b) b.hidden = !(+e.target.value > 0); } });
 function readFields() {
   return { p_name: $("#f-nombre").value.replace(/[<>]/g, "").trim(), p_level: $("#f-nivel").value, p_side: $("#f-lado").value,
     p_age: numOrNull("#f-edad"), p_height: numOrNull("#f-altura"), p_weight: numOrNull("#f-peso"), p_notes: $("#f-notas").value.replace(/[<>]/g, "").trim() };
@@ -750,12 +771,12 @@ function customHTML() {
     <div class="label">Adaptación automática</div>
     <div class="chips" style="margin-top:6px"><button class="chip" data-cauto="1" aria-pressed="${autoOn}">Activada</button><button class="chip" data-cauto="0" aria-pressed="${!autoOn}">Desactivada</button></div>
     <div class="label" style="margin-top:12px">Días por semana</div>
-    <div class="chips" style="margin-top:6px"><button class="chip" data-cfreq="def" aria-pressed="${!cu.freq}">Programa (${pr.days.filter((d) => !d.extra).length})</button>${Object.keys(pr.freq || {}).map((n) => `<button class="chip" data-cfreq="${n}" aria-pressed="${String(cu.freq) === n}">${n} días</button>`).join("")}</div>
+    <div class="chips" style="margin-top:6px"><button class="chip" data-cfreq="def" aria-pressed="${!cu.freq}">${autoFreq(pr, a) ? `Lo que pidió (${autoFreq(pr, a)})` : `Programa (${pr.days.filter((d) => !d.extra).length})`}</button>${Object.keys(pr.freq || {}).map((n) => `<button class="chip" data-cfreq="${n}" aria-pressed="${String(cu.freq) === n}">${n} días</button>`).join("")}</div>
     ${(a.program_id || 1) === 5 ? `<p class="muted" style="font-size:13px;margin:6px 0 0">En post parto, como mucho 5 días.</p>` : ""}
     <div class="label" style="margin-top:12px">Series</div>
     <div class="chips" style="margin-top:6px">${[["auto", "Según objetivo"], ["-1", "−1 serie"], ["0", "Normal"], ["1", "+1 serie"]].map(([k, n]) => `<button class="chip" data-csets="${k}" aria-pressed="${setsSel === k}">${n}</button>`).join("")}</div>
     ${pz.notes.length ? `<ul style="margin:12px 0 0;padding-left:18px;font-size:14px">${pz.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : `<p class="muted" style="font-size:14px;margin:12px 0 0">Sin adaptaciones: el atleta no ha indicado objetivo ni lesión por zonas.</p>`}
-    ${sessionsFor(pr, { custom: cu }).map(day).join("")}
+    ${sessionsFor(pr, { ...detail.a, custom: cu }).map(day).join("")}
     <div id="cxMsg" class="err"></div></div>`;
 }
 async function saveCustom(cu) {
@@ -789,12 +810,14 @@ function healthHTML(a) {
     <p style="margin:6px 0 0;font-size:15px">Para ${String(a.height_cm).replace(".", ",")} cm, el rango saludable es <b>${w.lo}–${w.hi} kg</b>.</p>
     ${a.weight_kg ? `<p style="margin:6px 0 0;font-size:15px">Pesa <b>${String(a.weight_kg).replace(".", ",")} kg</b> · IMC ${w.bmi.toFixed(1).replace(".", ",")} · <span class="pill" style="display:inline-block;margin-top:4px;line-height:1.35;white-space:normal;color:#fff;background:${w.cls === "ok" ? "#0F7A5A" : w.cls === "warn" ? "#B45309" : "#B42318"}">${esc(w.txt)}</span></p>` : `<p class="muted" style="margin:6px 0 0;font-size:14px">${esc(w.txt)}.</p>`}
     <p class="muted" style="margin:8px 0 0;font-size:13px">Cálculo por IMC (18,5–24,9). No distingue músculo de grasa: en atletas muy musculados puede salir alto sin que sobre peso.</p></div>` : "";
-  return goal + inj + wt;
+  const pdw = (a.padel_dows || []).slice().sort().map((i) => DOW_SHORT[i]).join(", ");
+  const wk = `<div class="banner"><b>Su semana:</b> ${a.want_days ? `quiere entrenar el físico <b>${a.want_days} días</b>` : "días de físico sin contestar"}${(a.program_id || 1) === 1 ? ` · pádel: ${a.padel_days == null ? "sin contestar" : a.padel_days === 0 ? "ahora mismo no juega" : `<b>${a.padel_days} día${a.padel_days > 1 ? "s" : ""}</b>${pdw ? ` (${pdw})` : ""}`}` : ""}${a.want_days && a.want_days < 3 ? ` · <span style="color:var(--danger)">el programa mínimo es de 3 días: ajústalo tú</span>` : ""}</div>`;
+  return goal + wk + inj + wt;
 }
 function schedHTML() {
   const pr = detail?.prog; if (!pr?.days) return "";
   const sc = detail.sched || {};
-  const SDa = sessionsFor(pr, { custom: detail.custom });
+  const SDa = sessionsFor(pr, { ...detail.a, custom: detail.custom });
   const used = {}; SDa.forEach((d) => { const v = dowOf(d, sc); if (v >= 0) used[v] = (used[v] || 0) + 1; });
   const rest = DOW.filter((_, i) => !used[i]);
   return `<div class="panel"><h3>Días de entreno</h3>
@@ -827,7 +850,7 @@ async function renderAthlete() {
     <div class="stat"><div class="label">Peso</div><div class="v">${a.weight_kg ?? "—"}<small>kg</small></div></div>
     <div class="stat"><div class="label">IMC</div><div class="v">${imc(a)}</div></div>
   </div>
-  <div class="banner">Sesiones hechas: <b>${detail.prog?.days ? ((sd) => `${s.filter((x) => sd.some((d) => d.key === x.day)).length} de ${sd.length * 8}`)(sessionsFor(detail.prog, { custom: detail.custom })) : `${s.length} de 24`}</b>${a.phone ? ` · Móvil: <b>${esc(a.phone)}</b>` : ""} · Alta: ${fmtDate(a.created_at)}</div>
+  <div class="banner">Sesiones hechas: <b>${detail.prog?.days ? ((sd) => `${s.filter((x) => sd.some((d) => d.key === x.day)).length} de ${sd.length * 8}`)(sessionsFor(detail.prog, { ...detail.a, custom: detail.custom })) : `${s.length} de 24`}</b>${a.phone ? ` · Móvil: <b>${esc(a.phone)}</b>` : ""} · Alta: ${fmtDate(a.created_at)}</div>
   ${healthHTML(a)}
   ${a.notes ? `<div class="banner"><b>Notas:</b> ${esc(a.notes)}</div>` : ""}
 
@@ -1080,7 +1103,7 @@ document.addEventListener("click", async (e) => {
         await saveCustom(cu);
         if (detail.a.schedule) { await rpc("admin_set_athlete_schedule", { p_user: detail.a.id, p_schedule: null }); detail.a.schedule = null; detail.sched = {}; }
         athletes = await q(sb.from("profiles").select("*").order("name"));
-        toast(cu.freq ? `${cu.freq} días por semana. Los días se han repartido solos; puedes moverlos en Días de entreno.` : "Vuelve a las sesiones del programa.");
+        toast(cu.freq ? `${cu.freq} días por semana. Los días se han repartido solos; puedes moverlos en Días de entreno.` : (autoFreq(detail.prog, detail.a) ? `Vuelve a los ${autoFreq(detail.prog, detail.a)} días que pidió el atleta.` : "Vuelve a las sesiones del programa."));
         renderAthlete();
       } catch (err) { $("#cxMsg").textContent = err.message; t.disabled = false; }
       return;
