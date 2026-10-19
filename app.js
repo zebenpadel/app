@@ -281,7 +281,7 @@ async function start(opts = {}) {
       const s = await q(sb.from("sessions_done").select("week,day").eq("user_id", me.id));
       done = {}; s.forEach((r) => (done[`${r.week}-${r.day}`] = true));
     }
-    setHeader(true);
+    setHeader(true); setWatermark();
     $("#sub").hidden = true;
     $("#who").textContent = initials(me.name);
     const hash = location.hash.replace("#", "");
@@ -683,9 +683,26 @@ function downloadJSON(obj, name) {
   const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = name; a.rel = "noopener";
   document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 5000);
 }
+// Protección del contenido: marca de agua con el nombre y el móvil del atleta, sin copiar texto
+// y plan desenfocado al salir de la app. (Ninguna web puede bloquear las capturas; esto identifica quién la hizo.)
+function setWatermark() {
+  document.getElementById("wm")?.remove();
+  document.body.classList.toggle("protect", !!me && !me.is_admin);
+  if (!me || me.is_admin) return;
+  const x = (t) => String(t).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const label = x(`${me.name || ""} · ${me.phone || ""} · ZEBEN`);
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"><text x="160" y="100" text-anchor="middle" transform="rotate(-28 160 100)" font-family="Arial, sans-serif" font-size="15" font-weight="700" fill="#111113" fill-opacity="0.12">${label}</text></svg>`;
+  const d = document.createElement("div"); d.id = "wm"; d.setAttribute("aria-hidden", "true");
+  d.style.cssText = `position:fixed;inset:0;z-index:50;pointer-events:none;background-image:url("data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}");background-repeat:repeat`;
+  document.body.appendChild(d);
+}
+document.addEventListener("visibilitychange", () => { document.body.classList.toggle("hidden-app", document.hidden && document.body.classList.contains("protect")); });
+document.addEventListener("copy", (e) => { if (document.body.classList.contains("protect") && !e.target.closest?.("input,textarea")) e.preventDefault(); });
+document.addEventListener("contextmenu", (e) => { if (document.body.classList.contains("protect") && e.target.closest?.("#app") && !e.target.closest("input,textarea,a")) e.preventDefault(); });
+
 async function logout() {
   try { const r = await navigator.serviceWorker?.getRegistration(); const s = await r?.pushManager?.getSubscription(); if (s) { await rpc("delete_push", { p_endpoint: s.endpoint }).catch(() => {}); await s.unsubscribe(); } } catch (_) {}
-  await sb.auth.signOut(); me = null; P = null; done = {}; athletes = []; detail = null;
+  await sb.auth.signOut(); me = null; P = null; done = {}; athletes = []; detail = null; setWatermark();
   history.replaceState(null, "", location.pathname); renderAuth("login");
 }
 
@@ -1173,7 +1190,7 @@ window.addEventListener("beforeunload", (e) => { if (tab === "editor" && edDirty
     return;
   }
   sb = window.supabase.createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
-  sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT" && me) { me = null; renderAuth("login", "Tu sesión ha terminado. Vuelve a entrar."); } });
+  sb.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT" && me) { me = null; setWatermark(); renderAuth("login", "Tu sesión ha terminado. Vuelve a entrar."); } });
   const { data } = await sb.auth.getSession();
   if (data.session) await start(); else renderAuth("login");
 })();
