@@ -286,6 +286,7 @@ async function start(opts = {}) {
       P = await loadProgram(planProg);
       const s = await q(sb.from("sessions_done").select("week,day").eq("user_id", me.id));
       done = {}; s.forEach((r) => (done[`${r.week}-${r.day}`] = true));
+      week = autoWeek();
     }
     setHeader(true); setWatermark();
     $("#sub").hidden = true;
@@ -441,6 +442,26 @@ function finisherHTML(pz) {
   return `<div class="sec">Final quemagrasa · 8–10 min</div><div class="ex"><span class="n">${soft ? "Bici o elíptica en intervalos" : "Intervalos en bici, remo o cuesta"}</span><span class="rx">8–10 min</span><span class="cue">${pz.prog === 5 ? "Ritmo cómodo: 1 min algo más rápido y 1 min suave." : "30 s fuerte y 30 s suave. Termina con 2 minutos suaves."}</span>${vid("intervalos bicicleta estática")}</div>`;
 }
 
+// Semana en la que va cada atleta según lo que ha hecho: un atleta nuevo empieza en la 1A.
+// Si terminó todas las sesiones de su última semana, pasa a la siguiente.
+function autoWeek() {
+  const SD = sessionsFor(P, me); if (!SD.length) return 1;
+  let last = 0; for (let w = 1; w <= 8; w++) if (SD.some((d) => done[`${w}-${d.key}`])) last = w;
+  if (!last) return 1;
+  return SD.every((d) => done[`${last}-${d.key}`]) ? Math.min(8, last + 1) : last;
+}
+// Musculación: bloque de carrera al final del 3.er día de entrenamiento de la semana
+const RUN = [ // por fase: [iniciación, intermedio, avanzado/competición]
+  ["10 × (1 min corriendo + 1 min andando)", "15–20 min de carrera suave", "20 min de carrera suave"],
+  ["8 × (2 min corriendo + 1 min andando)", "20–25 min de carrera suave", "25–30 min de carrera suave"],
+  ["6 × (1 min a buen ritmo + 2 min andando)", "5 min suave + 6 × (1 min rápido + 1 min suave) + 5 min suave", "5 min suave + 8 × (1 min rápido + 1 min suave) + 5 min suave"],
+  ["15 min alternando correr y andar", "15 min de carrera suave", "15–20 min de carrera suave"],
+];
+function runHTML(pz, phase, level) {
+  const soft = (pz.zones || []).some((z) => ["rodilla", "tobillo", "isquio"].includes(z));
+  const t = RUN[phase]?.[Math.min(2, level)] || RUN[0][0];
+  return `<div class="sec">Carrera · al terminar la sesión</div><div class="ex"><span class="n">${soft ? "Bici estática o elíptica (por tu lesión)" : "Carrera"}</span><span class="rx">${esc(t)}</span><span class="cue">${soft ? "Mismo tiempo y esfuerzo que la carrera, sin impacto." : "Ritmo suave: debes poder hablar mientras corres, salvo en los tramos rápidos. En cinta o en la calle."}</span>${vid(soft ? "bicicleta estática intervalos" : "técnica de carrera principiantes")}</div>`;
+}
 function i18nToday() { const d = new Date(); return "Hoy es " + DOW[todayDow()].toLowerCase() + ", " + d.getDate() + " de " + ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][d.getMonth()]; }
 function renderPlan() {
   if (!P) { $("#app").innerHTML = lockedCard(); return; }
@@ -466,6 +487,7 @@ function renderPlan() {
     <p class="muted" style="font-size:14px;margin:6px 0 0">Recuperar también es entrenar. Si te apetece moverte, da un paseo de 20–30 minutos o haz la movilidad del calentamiento.</p>
     <p style="font-size:14px;margin:8px 0 0">Tus sesiones de la semana: <b>${SD.map((d, i) => byDow[i] >= 0 ? `${DOW[byDow[i]]} (${esc(shortName(d))})` : "").filter(Boolean).join(", ")}</b>.</p></div>` : "";
   const pz = personalFor(me, planProg);
+  const runKey = planProg === 4 ? (SD.slice().sort((x, y) => (dowOf(x) < 0 ? 9 : dowOf(x)) - (dowOf(y) < 0 ? 9 : dowOf(y)))[2]?.key) : null;
   const days = visibleDays.map((d) => {
     const [main, extra] = personalDose(pz, P.dose[d.key][level][p]);
     const k = `${week}-${d.key}`; const isDone = !!done[k];
@@ -473,7 +495,7 @@ function renderPlan() {
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
       ${((u) => d.ex[VAR(week)].map((e0, i) => personalEx(pz, d.key, VAR(week), i, e0, u)))(new Set()).filter(Boolean).map(({ e, tag }) => `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`).join("")}
-      ${finisherHTML(pz)}
+      ${d.key === runKey ? runHTML(pz, p, level) : finisherHTML(pz)}
       <div class="note">${esc(d.note)}</div>
       <div class="done-row"><button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button></div></article>`;
   }).join("");
