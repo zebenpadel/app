@@ -462,6 +462,25 @@ function runHTML(pz, phase, level) {
   const t = RUN[phase]?.[Math.min(2, level)] || RUN[0][0];
   return `<div class="sec">Carrera · al terminar la sesión</div><div class="ex"><span class="n">${soft ? "Bici estática o elíptica (por tu lesión)" : "Carrera"}</span><span class="rx">${esc(t)}</span><span class="cue">${soft ? "Mismo tiempo y esfuerzo que la carrera, sin impacto." : "Ritmo suave: debes poder hablar mientras corres, salvo en los tramos rápidos. En cinta o en la calle."}</span>${vid(soft ? "bicicleta estática intervalos" : "técnica de carrera principiantes")}</div>`;
 }
+// % de la carga (1RM) según las repeticiones y el RPE/RIR de la fase. Solo ejercicios básicos con peso.
+const PCT = [100, 100, 95, 92, 89, 86, 84, 81, 79, 76, 74, 71, 69, 67, 65, 63, 61, 59, 57, 55, 53];
+const PCT_LIFT = /sentadilla (trasera|frontal|goblet|bulgara|hack)|^sentadilla goblet|peso muerto|press (banca|militar|inclinado|plano|de hombro|landmine|arnold)|push press|hip thrust|remo (con barra|con mancuerna|a una mano|en polea|en maquina)|jalon|prensa|zancada|step-up|thruster|dominadas lastradas/;
+const PCT_NO = /banda|pallof|sin peso|asistid|isometr|cossack|lateral$|con saco|caminando$|alterna$|ligero/;
+const PCT_POWER = { 1: ["55–60", "60–65", "70–75", "60"], 2: ["60–65", "65–70", "70–75", "60–65"] }; // push press, cargadas…
+function pctFor(name, main, extra, phase) {
+  if (![1, 2, 4].includes(planProg)) return "";
+  const n = plain(name); if (!PCT_LIFT.test(n) || PCT_NO.test(n)) return "";
+  if (/push press|thruster/.test(n) && !/R[IP][RE]/.test(extra || "")) return PCT_POWER[planProg]?.[phase] || "";
+  const m = String(main).match(/×\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*$/); if (!m) return "";
+  const r1 = +m[1], r2 = +(m[2] || m[1]);
+  let x = String(extra || "").match(/RIR\s*(\d+)(?:\s*[–-]\s*(\d+))?/), q1, q2;
+  if (x) { q1 = +x[1]; q2 = +(x[2] || x[1]); }
+  else if ((x = String(extra || "").match(/RPE\s*(\d+)(?:\s*[–-]\s*(\d+))?/))) { q1 = 10 - +(x[2] || x[1]); q2 = 10 - +x[1]; }
+  else return "";
+  const at = (k) => PCT[Math.min(PCT.length - 1, Math.max(1, k))];
+  const lo = Math.round(at(r2 + Math.max(q1, q2)) / 5) * 5, hi = Math.round(at(r1 + Math.min(q1, q2)) / 5) * 5;
+  return lo === hi ? `${lo}` : `${lo}–${hi}`;
+}
 function i18nToday() { const d = new Date(); return "Hoy es " + DOW[todayDow()].toLowerCase() + ", " + d.getDate() + " de " + ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][d.getMonth()]; }
 function renderPlan() {
   if (!P) { $("#app").innerHTML = lockedCard(); return; }
@@ -488,13 +507,14 @@ function renderPlan() {
     <p style="font-size:14px;margin:8px 0 0">Tus sesiones de la semana: <b>${SD.map((d, i) => byDow[i] >= 0 ? `${DOW[byDow[i]]} (${esc(shortName(d))})` : "").filter(Boolean).join(", ")}</b>.</p></div>` : "";
   const pz = personalFor(me, planProg);
   const runKey = planProg === 4 ? (SD.slice().sort((x, y) => (dowOf(x) < 0 ? 9 : dowOf(x)) - (dowOf(y) < 0 ? 9 : dowOf(y)))[2]?.key) : null;
+  let anyPct = false;
   const days = visibleDays.map((d) => {
     const [main, extra] = personalDose(pz, P.dose[d.key][level][p]);
     const k = `${week}-${d.key}`; const isDone = !!done[k];
     return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][SD.findIndex((x) => x.key === d.key) % 3]})">
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
-      ${((u) => d.ex[VAR(week)].map((e0, i) => personalEx(pz, d.key, VAR(week), i, e0, u)))(new Set()).filter(Boolean).map(({ e, tag }) => `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`).join("")}
+      ${((u) => d.ex[VAR(week)].map((e0, i) => personalEx(pz, d.key, VAR(week), i, e0, u)))(new Set()).filter(Boolean).map(({ e, tag }) => { const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
       ${d.key === runKey ? runHTML(pz, p, level) : finisherHTML(pz)}
       <div class="note">${esc(d.note)}</div>
       <div class="done-row"><button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button></div></article>`;
@@ -506,7 +526,7 @@ function renderPlan() {
     <h2>Semana del plan</h2>
     <p class="muted" style="font-size:13px;margin:-4px 0 0">A = primer mes · B = segundo mes</p>
     <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${wkLabel(w)}">${wkLabel(w)}<small>${SD.filter((d) => done[w + "-" + d.key]).length}/${SD.length}</small></button>`; }).join("")}</div>
-    <div class="phase"><div class="label">Semana ${wkLabel(week)} · ${esc(LV[level])}</div><b>${esc(P.phases[p].name)} · ${esc(P.variants?.[VAR(week)] || "Rutina " + VAR(week))}</b><div class="muted" style="font-size:14px">${esc(P.phases[p].txt)}</div></div>
+    <div class="phase"><div class="label">Semana ${wkLabel(week)} · ${esc(LV[level])}</div><b>${esc(P.phases[p].name)} · ${esc(P.variants?.[VAR(week)] || "Rutina " + VAR(week))}</b><div class="muted" style="font-size:14px">${esc(P.phases[p].txt)}</div>${anyPct ? `<div style="font-size:13px;margin-top:8px"><span class="pct">% </span> Carga en % de tu máximo (1RM): el peso que podrías levantar 1 sola vez. Si no lo sabes, elige un peso con el que te sobren las repeticiones que marca el RPE/RIR.</div>` : ""}</div>
     ${pz.notes.length ? `<div class="panel" style="margin-top:14px"><h3>Plan adaptado a ti</h3><ul style="margin:8px 0 0;padding-left:18px;font-size:14px">${pz.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}
     ${planned ? `<h2>Día</h2>${dowPick}` : ""}
     ${restCard}
@@ -666,6 +686,7 @@ function weekFields(a, padel) {
 .pick-i input{flex:none;width:18px;height:18px;margin:0;accent-color:var(--fg)}
 .pick-i:has(input:checked){border-color:var(--fg);background:var(--fg);color:var(--bg)}
 .pick-i:has(input:checked) input{accent-color:var(--bg)}
+.pct{display:inline-block;background:var(--pelota,#DCF23F);color:#111113;border-radius:999px;padding:1px 8px;font:800 12px var(--body);vertical-align:middle;white-space:nowrap}
 .pick.days .pick-i{position:relative;padding:11px 2px}
 .pick.days input{position:absolute;opacity:0;pointer-events:none}
 .pick-i:has(input:focus-visible){outline:2px solid var(--fg);outline-offset:2px}
