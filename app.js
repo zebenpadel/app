@@ -80,9 +80,24 @@ function lowFreq(prog, n, pid) {
   const out = keys.map((k) => prog.days.find((d) => d.key === k)).filter(Boolean);
   return out.length === n ? out : base.slice(0, n);
 }
-function sessionsFor(prog, a) {
+// Pádel con 1 o 2 días: las sesiones rotan cada semana en orden Fuerza → Explosividad → Agilidad
+const ROTA = { 1: ["fuerza", "explo", "agil"] };
+function rotating(prog, a) {
+  const n = a?.custom?.freq || autoFreq(prog, a), pid = +(a?.program_id || planProg) || 1;
+  const order = (ROTA[pid] || []).filter((k) => prog.days.some((d) => d.key === k));
+  return (n === 1 || n === 2) && order.length === 3 ? { n, order } : null;
+}
+// w: semana del plan (1–8). w = "all": todas las sesiones distintas que puede hacer (para el entrenador)
+function sessionsFor(prog, a, w) {
   if (!prog?.days) return [];
-  const n = a?.custom?.freq || autoFreq(prog, a);
+  const n = a?.custom?.freq || autoFreq(prog, a), rot = rotating(prog, a);
+  const strip = (d) => String(d.title || "").replace(/^Día \d+\s*·\s*/i, "");
+  if (rot) {
+    if (w === "all") return rot.order.map((k) => prog.days.find((d) => d.key === k)).map((d) => ({ ...d, title: strip(d) }));
+    const start = ((+w || 1) - 1) * n;
+    return Array.from({ length: n }, (_, i) => { const d = prog.days.find((x) => x.key === rot.order[(start + i) % 3]);
+      return { ...d, title: strip(d), schedKey: `slot${i + 1}`, when: DOW[FREQ_DAYS[n][i]] }; });
+  }
   if (n === 1 || n === 2) return lowFreq(prog, n, +(a?.program_id || planProg) || 1).map((d, i) => ({ ...d, title: String(d.title || "").replace(/^Día \d+\s*·\s*/i, ""), when: DOW[FREQ_DAYS[n][i]] }));
   const list = n && prog.freq?.[n];
   if (list) return list.map((k) => prog.days.find((d) => d.key === k)).filter(Boolean).map((d, i) => ({ ...d, title: String(d.title || "").replace(/^Día \d+\s*·\s*/i, ""), when: DOW[FREQ_DAYS[n]?.[i] ?? i] }));
@@ -96,7 +111,7 @@ function autoFreq(prog, a) {
   return ks.filter((k) => k <= w).pop() || null;
 }
 const dowDefault = (d) => { const w = plain(d.when); for (let i = 0; i < 7; i++) if (w.includes(plain(DOW[i]))) return i; return -1; };
-const dowOf = (d, sched) => { const v = (sched === undefined ? me?.schedule : sched)?.[d.key]; return Number.isInteger(v) && v >= 0 && v <= 6 ? v : dowDefault(d); };
+const dowOf = (d, sched) => { const v = (sched === undefined ? me?.schedule : sched)?.[d.schedKey || d.key]; return Number.isInteger(v) && v >= 0 && v <= 6 ? v : dowDefault(d); };
 const dowOfS = dowOf;
 let myLoads = [], myTests = [];
 let athletes = [], openId = null, detail = null;
@@ -340,8 +355,7 @@ function go(t) {
 }
 function renderProgress() {
   if (!P) { $("#progress").innerHTML = ""; return; }
-  const SD = sessionsFor(P, me), keys = new Set(SD.map((d) => d.key)), total = SD.length * 8;
-  const n = Object.keys(done).filter((k) => keys.has(k.split("-").slice(1).join("-"))).length;
+  const [n, total] = doneCount(P, me, done);
   $("#progress").innerHTML = `<div class="bar"><span style="width:${Math.round(n / total * 100)}%"></span></div><div class="ptxt">${n} de ${total} sesiones completadas</div>`;
 }
 
@@ -464,10 +478,15 @@ function finisherHTML(pz) {
 // Semana en la que va cada atleta según lo que ha hecho: un atleta nuevo empieza en la 1A.
 // Si terminó todas las sesiones de su última semana, pasa a la siguiente.
 function autoWeek(who = me, D = done) {
-  const SD = sessionsFor(P, who); if (!SD.length) return 1;
-  let last = 0; for (let w = 1; w <= 8; w++) if (SD.some((d) => D[`${w}-${d.key}`])) last = w;
+  if (!sessionsFor(P, who, 1).length) return 1;
+  let last = 0; for (let w = 1; w <= 8; w++) if (sessionsFor(P, who, w).some((d) => D[`${w}-${d.key}`])) last = w;
   if (!last) return 1;
-  return SD.every((d) => D[`${last}-${d.key}`]) ? Math.min(8, last + 1) : last;
+  return sessionsFor(P, who, last).every((d) => D[`${last}-${d.key}`]) ? Math.min(8, last + 1) : last;
+}
+// Sesiones hechas y totales de las 8 semanas
+function doneCount(prog, a, D) {
+  let n = 0, t = 0; for (let w = 1; w <= 8; w++) { const sd = sessionsFor(prog, a, w); t += sd.length; n += sd.filter((d) => D[`${w}-${d.key}`]).length; }
+  return [n, t];
 }
 // Musculación: bloque de carrera al final del 3.er día de entrenamiento de la semana
 const RUN = [ // por fase: [iniciación, intermedio, avanzado/competición]
@@ -521,7 +540,7 @@ function renderPlan() {
   const p = phaseOf(week);
   const WS = P.warmSecs || ["1 · Foam roller", "2 · Movilidad de tobillo (dorsiflexión)", (P.ankle?.length ? 3 : 2) + " · Movilidad y activación"];
   const row = (w) => `<div class="ex"><span class="n">${esc(w[0])}</span><span class="rx" style="font-size:16px">${esc(w[1])}</span>${w[3] ? `<span class="cue">${esc(w[3])}</span>` : ""}${vid(w[2])}</div>`;
-  const SD = sessionsFor(P, who);
+  const SD = sessionsFor(P, who, week);
   const byDow = SD.map((d) => dowOf(d));
   const planned = byDow.some((x) => x >= 0);
   const todaySess = SD.filter((d, i) => byDow[i] === selDow);
@@ -557,7 +576,7 @@ function renderPlan() {
     <div class="phase"><b>${esc(P.name || progName(planProg))}</b><div class="muted" style="font-size:14px">${me.is_admin && !other ? "Planes generales: elige el programa que quieras ver." : `2 meses (8 semanas) · ${SD.length} ${SD.length === 1 ? "sesión" : "sesiones"} por semana.`}</div>${progPick}</div>
     <h2>Semana del plan</h2>
     <p class="muted" style="font-size:13px;margin:-4px 0 0">A = primer mes · B = segundo mes</p>
-    <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${wkLabel(w)}">${wkLabel(w)}<small>${SD.filter((d) => D[w + "-" + d.key]).length}/${SD.length}</small></button>`; }).join("")}</div>
+    <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${wkLabel(w)}">${wkLabel(w)}<small>${((sw) => `${sw.filter((d) => D[w + "-" + d.key]).length}/${sw.length}`)(sessionsFor(P, who, w))}</small></button>`; }).join("")}</div>
     <div class="phase"><div class="label">Semana ${wkLabel(week)} · ${esc(LV[level])}</div><b>${esc(P.phases[p].name)} · ${esc(P.variants?.[VAR(week)] || "Rutina " + VAR(week))}</b><div class="muted" style="font-size:14px">${esc(P.phases[p].txt)}</div>${anyPct ? `<div style="font-size:13px;margin-top:8px"><span class="pct">% </span> Carga en % de tu máximo (1RM): el peso que podrías levantar 1 sola vez. Si no lo sabes, elige un peso con el que te sobren las repeticiones que marca el RPE/RIR.</div>` : ""}</div>
     ${pz.notes.length ? `<div class="panel" style="margin-top:14px"><h3>Plan adaptado a ti</h3><ul style="margin:8px 0 0;padding-left:18px;font-size:14px">${pz.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}
     ${planned ? `<h2>Día</h2>${dowPick}` : ""}
@@ -875,7 +894,7 @@ function customHTML() {
     <div class="label" style="margin-top:12px">Series</div>
     <div class="chips" style="margin-top:6px">${[["auto", "Según objetivo"], ["-1", "−1 serie"], ["0", "Normal"], ["1", "+1 serie"]].map(([k, n]) => `<button class="chip" data-csets="${k}" aria-pressed="${setsSel === k}">${n}</button>`).join("")}</div>
     ${pz.notes.length ? `<ul style="margin:12px 0 0;padding-left:18px;font-size:14px">${pz.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : `<p class="muted" style="font-size:14px;margin:12px 0 0">Sin adaptaciones: el atleta no ha indicado objetivo ni lesión por zonas.</p>`}
-    ${sessionsFor(pr, { ...detail.a, custom: cu }).map(day).join("")}
+    ${sessionsFor(pr, { ...detail.a, custom: cu }, "all").map(day).join("")}
     <div id="cxMsg" class="err"></div></div>`;
 }
 async function saveCustom(cu) {
@@ -916,13 +935,14 @@ function healthHTML(a) {
 function schedHTML() {
   const pr = detail?.prog; if (!pr?.days) return "";
   const sc = detail.sched || {};
-  const SDa = sessionsFor(pr, { ...detail.a, custom: detail.custom });
+  const rot = rotating(pr, { ...detail.a, custom: detail.custom });
+  const SDa = sessionsFor(pr, { ...detail.a, custom: detail.custom }, 1).map((d, i) => rot ? { ...d, title: `Sesión ${i + 1} de la semana (va rotando: Fuerza → Explosividad → Agilidad)` } : d);
   const used = {}; SDa.forEach((d) => { const v = dowOf(d, sc); if (v >= 0) used[v] = (used[v] || 0) + 1; });
   const rest = DOW.filter((_, i) => !used[i]);
   return `<div class="panel"><h3>Días de entreno</h3>
     <p class="muted" style="font-size:14px;margin:4px 0 10px">Elige qué día de la semana hace cada sesión. Puedes poner días seguidos y el descanso donde quieras.</p>
     ${SDa.map((d) => { const v = dowOf(d, sc); return `<div style="margin-top:10px"><b style="font-size:14px">${esc(d.title)}</b>
-      <div class="weeks" style="grid-template-columns:repeat(7,minmax(0,1fr));margin-top:6px">${DOW_SHORT.map((n, i) => `<button class="wk" data-sched="${esc(d.key)}|${i}" aria-pressed="${i === v}" aria-label="${esc(d.title)}: ${DOW[i]}">${n}</button>`).join("")}</div></div>`; }).join("")}
+      <div class="weeks" style="grid-template-columns:repeat(7,minmax(0,1fr));margin-top:6px">${DOW_SHORT.map((n, i) => `<button class="wk" data-sched="${esc(d.schedKey || d.key)}|${i}" aria-pressed="${i === v}" aria-label="${esc(d.title)}: ${DOW[i]}">${n}</button>`).join("")}</div></div>`; }).join("")}
     ${Object.values(used).some((n) => n > 1) ? `<div class="banner" style="margin-top:10px">Hay dos sesiones el mismo día. Se verán juntas ese día.</div>` : ""}
     <p class="muted" style="font-size:13px;margin:10px 0 0">Descanso: ${rest.length ? rest.join(", ") : "ningún día"}.</p>
     <div class="row" style="margin-top:12px"><button class="btn" id="saveSched">Guardar días</button><button class="btn ghost sm" id="resetSched">Volver a los días del programa</button></div>
@@ -951,7 +971,7 @@ async function renderAthlete() {
     <div class="stat"><div class="label">Peso</div><div class="v">${a.weight_kg ?? "—"}<small>kg</small></div></div>
     <div class="stat"><div class="label">IMC</div><div class="v">${imc(a)}</div></div>
   </div>
-  <div class="banner">Sesiones hechas: <b>${detail.prog?.days ? ((sd) => `${s.filter((x) => sd.some((d) => d.key === x.day)).length} de ${sd.length * 8}`)(sessionsFor(detail.prog, { ...detail.a, custom: detail.custom })) : `${s.length} de 24`}</b>${a.phone ? ` · Móvil: <b>${esc(a.phone)}</b>` : ""} · Alta: ${fmtDate(a.created_at)}</div>
+  <div class="banner">Sesiones hechas: <b>${detail.prog?.days ? ((c) => `${c[0]} de ${c[1]}`)(doneCount(detail.prog, { ...detail.a, custom: detail.custom }, Object.fromEntries(s.map((x) => [`${x.week}-${x.day}`, true])))) : `${s.length} de 24`}</b>${a.phone ? ` · Móvil: <b>${esc(a.phone)}</b>` : ""} · Alta: ${fmtDate(a.created_at)}</div>
   ${healthHTML(a)}
   ${a.notes ? `<div class="banner"><b>Notas:</b> ${esc(a.notes)}</div>` : ""}
 
