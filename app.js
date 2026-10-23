@@ -49,6 +49,7 @@ const vid = (q) => `<a class="vid" href="${esc(videoUrl(q))}" target="_blank" re
 let sb = null;
 let me = null;        // mi ficha
 let P = null;         // programa (solo si estoy activo)
+let viewAs = null, viewDone = {}, viewKey = "", lastViewed = null;   // el entrenador ve "Mi plan" como un atleta concreto
 let planProg = 1;     // programa que se ve en "Mi plan" (el entrenador puede mirar cualquiera)
 const PROGRAMS = { 1: "Pádel", 2: "HYROX", 3: "Mantente activo", 4: "Musculación", 5: "Post parto" };
 const progName = (id) => PROGRAMS[id] || "Pádel";
@@ -81,6 +82,7 @@ function autoFreq(prog, a) {
 }
 const dowDefault = (d) => { const w = plain(d.when); for (let i = 0; i < 7; i++) if (w.includes(plain(DOW[i]))) return i; return -1; };
 const dowOf = (d, sched) => { const v = (sched === undefined ? me?.schedule : sched)?.[d.key]; return Number.isInteger(v) && v >= 0 && v <= 6 ? v : dowDefault(d); };
+const dowOfS = dowOf;
 let myLoads = [], myTests = [];
 let athletes = [], openId = null, detail = null;
 let captchaToken = null, turnstileId = null;
@@ -180,6 +182,7 @@ function renderAuth(mode = "login", msg = "") {
   } else if (mode === "signup") {
     body = `<h3>Crear cuenta</h3><p class="muted" style="margin:0;font-size:14px">Después, Zeben activará tu plan cuando confirme el pago.</p>
       <label class="field"><span class="label">Nombre y apellido</span><input id="a-name" autocomplete="name" maxlength="40"></label>
+      <label class="field"><span class="label">¿Qué quieres entrenar?</span><select id="a-prog"><option value="">Elige tu actividad…</option>${Object.entries(PROGRAMS).map(([id, n]) => `<option value="${id}">${esc(n)}</option>`).join("")}</select></label>
       ${phoneField}${pinField("a-pin", "Elige un PIN")}${pinField("a-pin2", "Repite el PIN")}
       <label class="check"><input type="checkbox" id="a-consent"><span>He leído la <a href="privacidad.html" target="_blank" rel="noopener">política de privacidad</a> y acepto que ZEBEN guarde mis datos físicos (peso, altura, lesiones y resultados) para preparar y seguir mi plan.</span></label>
       <div class="cf" id="cf"></div>
@@ -220,6 +223,7 @@ async function doSignup(btn) {
   const { phone, pin } = readAuth(); const err = $("#aErr");
   const name = ($("#a-name").value || "").replace(/[<>]/g, "").trim();
   if (name.length < 2) return (err.textContent = "Escribe tu nombre.");
+  const prog = $("#a-prog").value; if (!prog) return (err.textContent = "Elige qué quieres entrenar.");
   if (!phone) return (err.textContent = "Escribe un móvil español de 9 cifras.");
   if (!/^\d{4}$/.test(pin)) return (err.textContent = "El PIN tiene que ser de 4 cifras.");
   if (/^(\d)\1{3}$|^(0123|1234|2345|3456|4567|5678|6789|9876|4321)$/.test(pin)) return (err.textContent = "Ese PIN es muy fácil de adivinar. Elige otro.");
@@ -227,7 +231,7 @@ async function doSignup(btn) {
   if (!$("#a-consent").checked) return (err.textContent = "Para crear la cuenta tienes que aceptar la política de privacidad.");
   if (needCaptcha()) return (err.textContent = "Espera a que termine la comprobación anti-robots.");
   btn.disabled = true; err.textContent = "";
-  const { data, error } = await sb.auth.signUp({ email: emailOf(phone), password: passwordOf(phone, pin), options: { data: { name, consent: "true" }, captchaToken: captchaToken || undefined } });
+  const { data, error } = await sb.auth.signUp({ email: emailOf(phone), password: passwordOf(phone, pin), options: { data: { name, consent: "true", program: prog }, captchaToken: captchaToken || undefined } });
   btn.disabled = false; resetTurnstile();
   if (error) { err.textContent = friendly(error); return; }
   if (!data.session) { err.textContent = "Cuenta creada. Ahora entra con tu móvil y tu PIN."; return; }
@@ -444,11 +448,11 @@ function finisherHTML(pz) {
 
 // Semana en la que va cada atleta según lo que ha hecho: un atleta nuevo empieza en la 1A.
 // Si terminó todas las sesiones de su última semana, pasa a la siguiente.
-function autoWeek() {
-  const SD = sessionsFor(P, me); if (!SD.length) return 1;
-  let last = 0; for (let w = 1; w <= 8; w++) if (SD.some((d) => done[`${w}-${d.key}`])) last = w;
+function autoWeek(who = me, D = done) {
+  const SD = sessionsFor(P, who); if (!SD.length) return 1;
+  let last = 0; for (let w = 1; w <= 8; w++) if (SD.some((d) => D[`${w}-${d.key}`])) last = w;
   if (!last) return 1;
-  return SD.every((d) => done[`${last}-${d.key}`]) ? Math.min(8, last + 1) : last;
+  return SD.every((d) => D[`${last}-${d.key}`]) ? Math.min(8, last + 1) : last;
 }
 // Musculación: bloque de carrera al final del 3.er día de entrenamiento de la semana
 const RUN = [ // por fase: [iniciación, intermedio, avanzado/competición]
@@ -483,15 +487,26 @@ function pctFor(name, main, extra, phase) {
 }
 function i18nToday() { const d = new Date(); return "Hoy es " + DOW[todayDow()].toLowerCase() + ", " + d.getDate() + " de " + ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][d.getMonth()]; }
 function renderPlan() {
+  const who = me.is_admin && viewAs ? viewAs : me, other = who !== me;
+  if (other && planProg !== (PROGRAMS[who.program_id] ? who.program_id : 1)) {
+    const id = PROGRAMS[who.program_id] ? who.program_id : 1;
+    $("#app").innerHTML = `<p class="muted" style="margin-top:24px">Cargando el plan de ${esc(who.name)}…</p>`;
+    loadProgram(id).then((d) => { if (!d) { viewAs = null; toast("Ese programa todavía no existe en la base de datos"); } else { planProg = id; P = d; } renderTabs(); if (tab === "plan") renderPlan(); });
+    return;
+  }
   if (!P) { $("#app").innerHTML = lockedCard(); return; }
-  const LV = P.levels; let level = Math.max(0, LV.indexOf(me.level));
+  const D = other ? viewDone : done, sch = other ? (who.schedule || null) : undefined;
+  const k0 = other ? who.id + "|" + planProg : "me";
+  if (k0 !== viewKey) { viewKey = k0; week = autoWeek(who, D); selDow = todayDow(); }
+  const dowOf = (d) => dowOfS(d, sch);
+  const LV = P.levels; let level = Math.max(0, LV.indexOf(who.level));
   const VAR = (w) => "ABC"[(w - 1) % 3];
   const phaseOf = (w) => P.phases.findIndex((p) => p.weeks.includes(w));
   week = Math.min(8, Math.max(1, +week || 1));
   const p = phaseOf(week);
   const WS = P.warmSecs || ["1 · Foam roller", "2 · Movilidad de tobillo (dorsiflexión)", (P.ankle?.length ? 3 : 2) + " · Movilidad y activación"];
   const row = (w) => `<div class="ex"><span class="n">${esc(w[0])}</span><span class="rx" style="font-size:16px">${esc(w[1])}</span>${w[3] ? `<span class="cue">${esc(w[3])}</span>` : ""}${vid(w[2])}</div>`;
-  const SD = sessionsFor(P, me);
+  const SD = sessionsFor(P, who);
   const byDow = SD.map((d) => dowOf(d));
   const planned = byDow.some((x) => x >= 0);
   const todaySess = SD.filter((d, i) => byDow[i] === selDow);
@@ -499,33 +514,35 @@ function renderPlan() {
   const shortName = (d) => String(d.title || "").split("·").pop().trim();
   const dowPick = planned ? `<div class="weeks" style="grid-template-columns:repeat(7,minmax(0,1fr))">${DOW_SHORT.map((n, i) => {
       const ds = SD.filter((d, j) => byDow[j] === i);
-      const ok = ds.length && ds.every((d) => done[`${week}-${d.key}`]);
+      const ok = ds.length && ds.every((d) => D[`${week}-${d.key}`]);
       return `<button class="wk" data-dow="${i}" aria-pressed="${!showAllDays && i === selDow}" aria-label="${DOW[i]}${ds.length ? ": " + esc(ds.map(shortName).join(", ")) : ": descanso"}">${n}<small>${ds.length ? (ok ? "✓ hecho" : "entreno") : "libre"}</small></button>`; }).join("")}</div>
     <div class="row" style="margin-top:8px;justify-content:space-between"><span class="muted" style="font-size:13px">${i18nToday()}</span><button class="btn ghost sm" data-alldays="1">${showAllDays ? "Ver solo un día" : "Ver toda la semana"}</button></div>` : "";
   const restCard = planned && !showAllDays && !todaySess.length ? `<div class="panel"><h3>${selDow === todayDow() ? "Hoy" : DOW[selDow]} toca descanso</h3>
     <p class="muted" style="font-size:14px;margin:6px 0 0">Recuperar también es entrenar. Si te apetece moverte, da un paseo de 20–30 minutos o haz la movilidad del calentamiento.</p>
     <p style="font-size:14px;margin:8px 0 0">Tus sesiones de la semana: <b>${SD.map((d, i) => byDow[i] >= 0 ? `${DOW[byDow[i]]} (${esc(shortName(d))})` : "").filter(Boolean).join(", ")}</b>.</p></div>` : "";
-  const pz = personalFor(me, planProg);
+  const pz = personalFor(who, planProg);
   const runKey = planProg === 4 ? (SD.slice().sort((x, y) => (dowOf(x) < 0 ? 9 : dowOf(x)) - (dowOf(y) < 0 ? 9 : dowOf(y)))[2]?.key) : null;
   let anyPct = false;
   const days = visibleDays.map((d) => {
     const [main, extra] = personalDose(pz, P.dose[d.key][level][p]);
-    const k = `${week}-${d.key}`; const isDone = !!done[k];
+    const k = `${week}-${d.key}`; const isDone = !!D[k];
     return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][SD.findIndex((x) => x.key === d.key) % 3]})">
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
       ${((u) => d.ex[VAR(week)].map((e0, i) => personalEx(pz, d.key, VAR(week), i, e0, u)))(new Set()).filter(Boolean).map(({ e, tag }) => { const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
       ${d.key === runKey ? runHTML(pz, p, level) : finisherHTML(pz)}
       <div class="note">${esc(d.note)}</div>
-      <div class="done-row"><button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button></div></article>`;
+      <div class="done-row">${other ? `<span class="pill ${isDone ? "" : "off"}">${isDone ? "✓ Hecha por " + esc(who.name.split(" ")[0]) : "Aún sin hacer"}</span>` : `<button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button>`}</div></article>`;
   }).join("");
-  const progPick = me.is_admin ? `<div class="chips" style="margin-top:10px">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-plan-prog="${id}" aria-pressed="${+id === planProg}">${esc(n)}</button>`).join("")}</div>` : "";
+  const lastA = me.is_admin && !other ? lastViewed : null;
+  const progPick = me.is_admin && !other ? `<div class="chips" style="margin-top:10px">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-plan-prog="${id}" aria-pressed="${+id === planProg}">${esc(n)}</button>`).join("")}</div>${lastA ? `<button class="btn ghost sm" style="margin-top:10px" data-plan-ath="${esc(lastA.id)}">Ver el plan de ${esc(lastA.name)}</button>` : ""}` : "";
   $("#app").innerHTML = `
-    <h2>Tu programa</h2>
-    <div class="phase"><b>${esc(P.name || progName(planProg))}</b><div class="muted" style="font-size:14px">${me.is_admin ? "Como entrenador puedes ver cualquier programa." : `2 meses (8 semanas) · ${SD.length} ${SD.length === 1 ? "sesión" : "sesiones"} por semana.`}</div>${progPick}</div>
+    ${other ? `<div class="banner" style="margin-top:18px;border-left:4px solid var(--ball)"><b>Estás viendo el plan de ${esc(who.name)}</b>, tal como lo ve en su móvil: su programa, sus días y sus adaptaciones.<div class="row" style="margin-top:10px;gap:8px"><button class="btn sm" data-plan-general="1">Ver planes generales</button><button class="btn ghost sm" data-ficha="${esc(who.id)}">Ficha de ${esc(who.name.split(" ")[0])}</button></div></div>` : ""}
+    <h2>${other ? "Su programa" : "Tu programa"}</h2>
+    <div class="phase"><b>${esc(P.name || progName(planProg))}</b><div class="muted" style="font-size:14px">${me.is_admin && !other ? "Planes generales: elige el programa que quieras ver." : `2 meses (8 semanas) · ${SD.length} ${SD.length === 1 ? "sesión" : "sesiones"} por semana.`}</div>${progPick}</div>
     <h2>Semana del plan</h2>
     <p class="muted" style="font-size:13px;margin:-4px 0 0">A = primer mes · B = segundo mes</p>
-    <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${wkLabel(w)}">${wkLabel(w)}<small>${SD.filter((d) => done[w + "-" + d.key]).length}/${SD.length}</small></button>`; }).join("")}</div>
+    <div class="weeks">${Array.from({ length: 8 }, (_, i) => { const w = i + 1; return `<button class="wk" aria-pressed="${w === week}" data-w="${w}" aria-label="Semana ${wkLabel(w)}">${wkLabel(w)}<small>${SD.filter((d) => D[w + "-" + d.key]).length}/${SD.length}</small></button>`; }).join("")}</div>
     <div class="phase"><div class="label">Semana ${wkLabel(week)} · ${esc(LV[level])}</div><b>${esc(P.phases[p].name)} · ${esc(P.variants?.[VAR(week)] || "Rutina " + VAR(week))}</b><div class="muted" style="font-size:14px">${esc(P.phases[p].txt)}</div>${anyPct ? `<div style="font-size:13px;margin-top:8px"><span class="pct">% </span> Carga en % de tu máximo (1RM): el peso que podrías levantar 1 sola vez. Si no lo sabes, elige un peso con el que te sobren las repeticiones que marca el RPE/RIR.</div>` : ""}</div>
     ${pz.notes.length ? `<div class="panel" style="margin-top:14px"><h3>Plan adaptado a ti</h3><ul style="margin:8px 0 0;padding-left:18px;font-size:14px">${pz.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul></div>` : ""}
     ${planned ? `<h2>Día</h2>${dowPick}` : ""}
@@ -715,6 +732,9 @@ async function renderProfile() {
   $("#app").innerHTML = `
   <div class="row" style="gap:12px;margin-top:22px"><span class="avatar">${esc(initials(me.name))}</span>
     <div style="min-width:0;flex:1"><h2 style="margin:0">${esc(me.name)}</h2>${status}</div></div>
+  ${me.is_admin ? "" : `<div class="panel"><h3>Tu actividad</h3>${isActive(me)
+    ? `<p style="margin:6px 0 0;font-size:15px"><b>${esc(progName(myProg()))}</b></p><p class="muted" style="font-size:14px;margin:4px 0 0">Si quieres cambiar de actividad, coméntalo con Zeben.</p>`
+    : `<p class="muted" style="font-size:14px;margin:4px 0 10px">Elige qué quieres entrenar. Zeben lo verá al activar tu plan.</p><div class="chips">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-myprog="${id}" aria-pressed="${+id === myProg()}">${esc(n)}</button>`).join("")}</div>`}</div>`}
   <div class="panel"><h3>Mis datos</h3><div style="margin-top:12px">${athleteFields(me, P?.levels || LEVELS_DEFAULT, myProg())}</div>
     <div class="row" style="margin-top:14px"><button class="btn" id="saveMe">Guardar</button></div><div id="meMsg" class="err"></div></div>
   <div class="panel"><h3>Avisos en este móvil</h3>
@@ -779,7 +799,7 @@ document.addEventListener("contextmenu", (e) => { if (document.body.classList.co
 
 async function logout() {
   try { const r = await navigator.serviceWorker?.getRegistration(); const s = await r?.pushManager?.getSubscription(); if (s) { await rpc("delete_push", { p_endpoint: s.endpoint }).catch(() => {}); await s.unsubscribe(); } } catch (_) {}
-  await sb.auth.signOut(); me = null; P = null; done = {}; athletes = []; detail = null; setWatermark();
+  await sb.auth.signOut(); me = null; P = null; done = {}; viewAs = null; lastViewed = null; viewKey = ""; athletes = []; detail = null; setWatermark();
   history.replaceState(null, "", location.pathname); renderAuth("login");
 }
 
@@ -903,6 +923,8 @@ async function renderAthlete() {
   if (tab !== "atletas" || openId !== a.id) return;
   if (!detail || detail.a.id !== a.id || !detail.sched) detail = { a, sched: { ...(a.schedule || {}) }, custom: JSON.parse(JSON.stringify(a.custom || {})), open: new Set() };
   detail = { ...detail, a, loads: r.l, tests: r.t, prog };
+  if (!viewAs || viewAs.id !== a.id) viewKey = "";
+  viewAs = a; viewDone = {}; s.forEach((x) => (viewDone[`${x.week}-${x.day}`] = true));
   const t = todayISO();
   $("#app").innerHTML = `
   <button class="back" id="back">← Volver a atletas</button>
@@ -1113,6 +1135,7 @@ document.addEventListener("click", async (e) => {
     if (t.id === "doForgot") return await doForgot(t);
     if (!me) return;
     if (t.dataset.tab) { openId = null; return go(t.dataset.tab); }
+    if (t.dataset.myprog) { t.disabled = true; try { await rpc("set_my_program", { p_program: +t.dataset.myprog }); me = await loadMe(); toast(`Actividad: ${progName(myProg())}`); renderProfile(); } catch (err) { toast(err.message); t.disabled = false; } return; }
     if (t.id === "who") { openId = null; return go("perfil"); }
 
     // Plan
@@ -1212,7 +1235,10 @@ document.addEventListener("click", async (e) => {
       catch (err) { $("#progMsg").textContent = err.message; t.disabled = false; }
       return;
     }
-    if (t.dataset.planProg) { const id = +t.dataset.planProg; t.disabled = true; const d = await loadProgram(id); if (!d) { t.disabled = false; return toast("Ese programa todavía no existe en la base de datos"); } planProg = id; P = d; renderTabs(); return renderPlan(); }
+    if (t.dataset.planGeneral) { lastViewed = viewAs; viewAs = null; viewKey = ""; return renderPlan(); }
+    if (t.dataset.ficha) { openId = t.dataset.ficha; detail = null; return go("atletas"); }
+    if (t.dataset.planAth) { const a = athletes.find((x) => x.id === t.dataset.planAth); if (a) { viewAs = a; viewDone = {}; try { (await q(sb.from("sessions_done").select("week,day").eq("user_id", a.id))).forEach((r) => (viewDone[`${r.week}-${r.day}`] = true)); } catch (_) {} } viewKey = ""; return renderPlan(); }
+    if (t.dataset.planProg) { if (viewAs) lastViewed = viewAs; viewAs = null; viewKey = ""; const id = +t.dataset.planProg; t.disabled = true; const d = await loadProgram(id); if (!d) { t.disabled = false; return toast("Ese programa todavía no existe en la base de datos"); } planProg = id; P = d; renderTabs(); return renderPlan(); }
     if (t.dataset.compProg) { const id = +t.dataset.compProg; t.disabled = true; const d = await loadProgram(id); if (!d) { t.disabled = false; return toast("Ese programa todavía no existe en la base de datos"); } planProg = id; P = d; renderTabs(); return renderCompetition(); }
     if (t.id === "back") { openId = null; detail = null; return renderAthletes(); }
     if (t.dataset.plus) {
