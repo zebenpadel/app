@@ -519,6 +519,424 @@ function pctFor(name, main, extra, phase) {
   const lo = Math.round(at(r2 + Math.max(q1, q2)) / 5) * 5, hi = Math.round(at(r1 + Math.min(q1, q2)) / 5) * 5;
   return lo === hi ? `${lo}` : `${lo}–${hi}`;
 }
+// =====================================================================
+//  VARIEDAD SEMANAL: cada semana, ejercicios distintos con el mismo objetivo.
+//  Semanas 1A–3A usan las rutinas A, B y C. Desde la 4A cada ejercicio se cambia
+//  por otro de su misma familia (mismo patrón de movimiento y mismo material).
+// =====================================================================
+const VX = (s) => s.split("\n").map((l) => l.trim()).filter(Boolean).map((l) => { const [n, c] = l.split("|"); const no5 = n.trim().startsWith("!"); return { n: n.trim().replace(/^!/, ""), c: (c || "").trim(), no5 }; });
+// re: a qué ejercicios se aplica · ctx: gym (pádel, HYROX, musculación) o home (mantente activo, post parto)
+const FAMILIES = [
+  { re: /bulgara|zancada (inversa|atras|caminando|alterna|frontal)|zancadas? con saco|step-up(?! lateral)|sentadilla dividida/, ctx: "gym", pool: VX(`
+    Sentadilla búlgara|Pie de atrás en el banco, baja recto y empuja con la pierna de delante.
+    Zancada inversa con mancuernas|Paso atrás largo, rodilla de delante estable.
+    Zancada caminando con mancuernas|Pasos largos y controlados, tronco erguido.
+    Step-up al cajón con mancuernas|Sube empujando con el pie de arriba, sin impulsarte con el de abajo.
+    Zancada frontal con mancuernas|Paso adelante, frena y vuelve con fuerza.
+    Sentadilla dividida con barra|Pies fijos, baja vertical y controla la rodilla.
+    Zancada en déficit|Pie de delante sobre un disco: más recorrido para el glúteo.
+    Step-up alto con pausa|Cajón alto, pausa arriba de 1 s.` ) },
+  { re: /bulgara|zancada (atras|alterna)|step-up|sentadilla dividida/, ctx: "home", pool: VX(`
+    Zancada atrás|Paso atrás, baja controlando y vuelve.
+    Zancada atrás con apoyo|Una mano en la pared o una silla para el equilibrio.
+    Step-up a un escalón|Sube con todo el pie apoyado y baja despacio.
+    Sentadilla dividida con apoyo|Pies fijos, baja recto apoyándote en una silla.
+    Zancada alterna|Alterna piernas con ritmo cómodo.
+    !Sentadilla búlgara en el sofá|Pie de atrás en el sofá, baja recto.
+    !Zancada lateral suave|Paso al lado y vuelve, rodilla mirando a la punta del pie.`) },
+  { re: /zancada lateral|cossack|step-up lateral/, ctx: "gym", pool: VX(`
+    Zancada lateral con mancuerna|Cadera atrás y rodilla alineada con el pie.
+    Sentadilla cossack|Baja hacia un lado con la otra pierna estirada.
+    Step-up lateral al cajón|Sube de lado al cajón, rodilla estable.
+    Zancada lateral con kettlebell en el pecho|Peso delante del pecho, tronco erguido.
+    Zancada lateral deslizante|Pie en un deslizador o toalla, vuelve con el aductor.
+    Zancada en diagonal hacia atrás|Paso atrás en diagonal, como en una recuperación de pista.`) },
+  { re: /sentadilla (trasera|frontal|goblet|hack|con pausa|zercher)|^sentadilla goblet|prensa/, ctx: "gym", pool: VX(`
+    Sentadilla trasera|Barra en la espalda, baja con el tronco firme.
+    Sentadilla frontal|Barra delante, codos altos y tronco erguido.
+    Sentadilla goblet|Mancuerna o kettlebell delante del pecho.
+    Sentadilla hack|En máquina, espalda pegada al respaldo.
+    Prensa de piernas|Recorrido completo sin despegar la zona lumbar.
+    Sentadilla con pausa|Pausa de 2 s abajo, sube con fuerza.
+    Sentadilla a caja con barra|Toca el cajón sin dejarte caer y sube.
+    Sentadilla Zercher|Barra en el pliegue de los codos, tronco muy firme.`) },
+  { re: /sentadilla (goblet|a una silla|a caja|a una caja|al aire|con salto|sumo|con pausa)/, ctx: "home", pool: VX(`
+    Sentadilla goblet|Peso delante del pecho, baja hasta donde controles.
+    Sentadilla a una silla|Roza la silla y sube sin dejarte caer.
+    Sentadilla al aire lenta|3 s bajando, 1 s subiendo.
+    Sentadilla sumo con mancuerna|Pies abiertos, puntas hacia fuera.
+    Sentadilla con pausa|Pausa de 2 s abajo.
+    Sentadilla a caja|Siéntate en el cajón o silla baja y levántate con fuerza.`) },
+  { re: /peso muerto a una pierna|peso muerto rumano a una pierna/, ctx: "any", pool: VX(`
+    Peso muerto a una pierna|Cadera atrás, espalda recta y pierna de atrás estirada.
+    Peso muerto a una pierna con kettlebell|Peso en la mano contraria a la pierna de apoyo.
+    Peso muerto rumano con apoyo (kickstand)|Pie de atrás de puntillas para equilibrar.
+    Peso muerto a una pierna con apoyo en la pared|Una mano en la pared para centrarte en el isquio.`) },
+  { re: /peso muerto|buenos dias|pull-through/, ctx: "gym", pool: VX(`
+    Peso muerto rumano|Cadera atrás, barra pegada a las piernas.
+    Peso muerto convencional|Empuja el suelo, espalda neutra.
+    Peso muerto con trap bar|Barra hexagonal, empuja con las piernas.
+    Peso muerto con kettlebell|Bisagra de cadera con la espalda neutra.
+    Peso muerto sumo|Pies abiertos, rodillas hacia fuera.
+    Peso muerto rumano con mancuernas|Mancuernas pegadas a las piernas.
+    Buenos días con barra|Rodillas un poco dobladas, cadera atrás.
+    Pull-through en polea|De espaldas a la polea, extiende la cadera con el glúteo.`) },
+  { re: /peso muerto|buenos dias/, ctx: "home", pool: VX(`
+    Peso muerto rumano con mancuernas|Cadera atrás y espalda recta.
+    Buenos días con banda|Banda bajo los pies y por detrás del cuello.
+    Peso muerto con kettlebell o garrafa|Bisagra de cadera, empuja con los talones.
+    Peso muerto rumano ligero|Poco peso, recorrido controlado.
+    Peso muerto rumano con banda|Banda bajo los pies, extiende la cadera con el glúteo.`) },
+  { re: /hip thrust|puente de gluteo(?! con exhalacion)|patada de gluteo|frog pump/, ctx: "gym", pool: VX(`
+    Hip thrust|Espalda en el banco, aprieta glúteo arriba 1 s.
+    Hip thrust con barra|Barbilla al pecho y costillas abajo.
+    Hip thrust a una pierna|Una pierna, cadera nivelada.
+    Hip thrust con pausa|Pausa de 2 s arriba.
+    Puente de glúteo con barra|Desde el suelo, empuja con los talones.
+    Hip thrust en máquina|Recorrido completo y controlado.
+    Patada de glúteo en polea|Tobillera en la polea, lleva la pierna atrás sin arquear.
+    Frog pump con mancuerna|Plantas de los pies juntas, rodillas fuera.`) },
+  { re: /hip thrust|puente de gluteo(?! con exhalacion)/, ctx: "home", pool: VX(`
+    Puente de glúteo|Aprieta glúteo arriba 1 s.
+    Puente de glúteo a una pierna|Cadera nivelada.
+    Puente de glúteo con banda|Banda en las rodillas, empuja hacia fuera.
+    Puente de glúteo con pausa|Pausa de 3 s arriba.
+    Hip thrust en el sofá|Espalda en el sofá, empuja con los talones.
+    Puente de glúteo con pies elevados|Pies en una silla o escalón.`) },
+  { re: /curl femoral|curl nordico/, ctx: "gym", pool: VX(`
+    Curl femoral tumbado|Cadera pegada al banco, baja en 3 s.
+    Curl femoral sentado|Muslos bien sujetos, recorrido completo.
+    Curl femoral a una pierna|Una pierna, controla la bajada.
+    Curl nórdico asistido|Baja lo más lento que puedas, ayúdate con las manos.
+    Curl femoral con fitball|Talones en la pelota, cadera arriba.
+    Deslizamiento de isquios con toalla|Talones sobre toallas, desliza y recoge.`) },
+  { re: /extension de cuadriceps/, ctx: "gym", pool: VX(`
+    Extensión de cuádriceps|Pausa de 1 s arriba.
+    Extensión de cuádriceps a una pierna|Una pierna, bajada lenta.
+    Extensión de cuádriceps con pausa|2 s arriba apretando.
+    Sentadilla sissy asistida|Agarrado a un soporte, rodillas adelante y tronco recto.
+    Sentadilla española con banda|Banda detrás de las rodillas, tronco vertical.`) },
+  { re: /gemelo|elevacion de talones/, ctx: "gym", pool: VX(`
+    Elevación de gemelos de pie|Sube alto y baja lento.
+    Gemelo sentado|Rodillas a 90°, pausa arriba.
+    Elevación de gemelos a una pierna|Una pierna, recorrido completo.
+    Gemelo en prensa|Solo los tobillos se mueven.
+    Gemelo en escalón con pausa|Talón por debajo del escalón, pausa abajo.
+    Elevación de talones con salto suave|Rebotes cortos y elásticos.`) },
+  { re: /elevacion de talones|gemelo/, ctx: "home", pool: VX(`
+    Elevación de talones|Sube alto y baja lento.
+    Elevación de talones a una pierna|Apóyate en la pared.
+    Elevación de talones en escalón|Talón por debajo del escalón.
+    Elevación de talones con pausa|2 s arriba.`) },
+  { re: /abduccion|paso lateral con banda|almeja|elevacion lateral de pierna|monster walk/, ctx: "gym", pool: VX(`
+    Abducción de cadera en máquina|Empuja hacia fuera con el glúteo.
+    Paso lateral con banda|Banda en las rodillas, pasos cortos.
+    Monster walk con banda|Pasos en diagonal, rodillas hacia fuera.
+    Abducción en polea|Tobillera, lleva la pierna al lado.
+    Abducción sentado con banda|Banda en las rodillas, abre y aguanta.`) },
+  { re: /abduccion|paso lateral con banda|almeja|elevacion lateral de pierna|monster walk/, ctx: "home", pool: VX(`
+    Paso lateral con banda|Banda en las rodillas, pasos cortos.
+    Almeja (clamshell)|Tumbado de lado, abre la rodilla sin girar la cadera.
+    Elevación lateral de pierna tumbada|Pierna estirada, sube sin girar.
+    Monster walk con banda|Pasos en diagonal, rodillas hacia fuera.
+    Abducción sentado con banda|Banda en las rodillas, abre y aguanta.`) },
+  { re: /escaladores|burpee sin salto|jumping jacks|skipping|sentadilla con salto suave|boxeo de sombra|rodillas al pecho de pie/, ctx: "home", pool: VX(`
+    Escaladores|Rodillas al pecho, cadera baja.
+    Burpee sin salto|Baja, estira las piernas atrás y vuelve.
+    Jumping jacks (o sin salto)|Abre y cierra brazos y piernas.
+    Skipping suave o comba|Rodillas a la altura de la cadera.
+    !Sentadilla con salto suave|Aterriza suave.
+    Boxeo de sombra|Golpes al aire con desplazamiento.
+    Rodillas al pecho de pie|Alterna rápido con los brazos.`) },
+  { re: /equilibrio|talon-punta/, ctx: "home", pool: VX(`
+    Equilibrio a una pierna|Cerca de una pared por si acaso.
+    Equilibrio en tándem|Un pie justo delante del otro.
+    Caminar talón-punta|En línea recta, mirada al frente.
+    Equilibrio a una pierna con alcance|Toca delante, al lado y atrás con la otra pierna.
+    Equilibrio sobre un cojín|Superficie blanda, rodilla suave.
+    Equilibrio a una pierna con ojos cerrados|Solo si ya controlas con los ojos abiertos.`) },
+  // Prevención de lesiones (pádel y resto): hombro, muñeca y codo, rodilla y aductor
+  { re: /rotacion externa|face pull|y-t-w|pull-apart|pajaros con banda/, ctx: "any", pool: VX(`
+    Rotación externa de hombro con banda|Codo pegado al cuerpo, gira hacia fuera.
+    Face pull con banda|Codos altos, tira hacia la cara.
+    Y-T-W tumbado boca abajo|Dibuja las letras con los brazos, pulgares arriba.
+    Rotación externa a 90° con banda|Brazo en cruz y codo a 90°, gira hacia arriba.
+    Pull-apart con banda|Separa la banda a la altura del pecho.
+    Rotación externa tumbado de lado|Mancuerna ligera, codo pegado.`) },
+  { re: /muneca|pronacion|supinacion|antebrazo/, ctx: "any", pool: VX(`
+    Extensión excéntrica de muñeca|Sube con ayuda y baja lento en 4 s.
+    Pronación y supinación con mancuerna|Agarra por un extremo y gira despacio.
+    Flexión de muñeca con mancuerna|Antebrazo apoyado, sube y baja.
+    Desviación radial con martillo o mancuerna|Sube la punta hacia el techo.
+    Apretar pelota de pádel|Aprieta 5 s y suelta, para el agarre.`) },
+  { re: /sentadilla espanola|isometria de cuadriceps|step-down/, ctx: "any", pool: VX(`
+    Sentadilla española con banda|Banda detrás de las rodillas, tronco vertical.
+    Isometría de cuádriceps en pared|Espalda en la pared, rodillas a 60°.
+    Step-down excéntrico|Desde un escalón, baja el talón al suelo en 3 s.
+    Extensión de cuádriceps isométrica|Aguanta arriba 20–30 s.`) },
+  { re: /copenhague|aductor/, ctx: "any", noProg: [5], pool: VX(`
+    Copenhague en banco (rodilla apoyada)|Cadera alta, cuerpo en línea.
+    Isometría de aductores con balón|Balón entre las rodillas, aprieta 5 s.
+    Copenhague corto con pausa|Rodilla apoyada, aguanta 10–15 s.
+    Aducción en polea|Tobillera, lleva la pierna hacia dentro.`) },
+  { re: /fondos en paralelas|fondos asistidos/, ctx: "gym", pool: VX(`
+    Fondos en paralelas|Tronco algo inclinado, baja a 90°.
+    Fondos asistidos|Con banda o máquina, recorrido completo.
+    Flexiones con pies elevados|Pies en un banco, cuerpo recto.
+    Press banca agarre cerrado|Manos al ancho de hombros, codos pegados.`) },
+  { re: /press (banca|plano|inclinado|de pecho)|floor press|flexiones lastradas|press en maquina de pecho/, ctx: "gym", pool: VX(`
+    Press banca|Escápulas juntas, barra al pecho controlada.
+    Press plano con mancuernas|Baja hasta el pecho, sube juntándolas.
+    Press inclinado con barra|Banco a 30°, barra a la parte alta del pecho.
+    Press inclinado con mancuernas|Banco a 30°, codos a 45°.
+    Floor press con mancuernas|Tumbado en el suelo, codos tocan suave.
+    Press de pecho en máquina|Recorrido completo, sin bloquear.
+    Flexiones lastradas|Disco en la espalda, cuerpo en bloque.
+    Press inclinado a una mano|Una mancuerna, el core no deja girar.`) },
+  { re: /flexiones|press de pecho|press .*encimera/, ctx: "home", pool: VX(`
+    Flexiones inclinadas|Manos en una mesa o banco, cuerpo recto.
+    Flexiones (en suelo o de rodillas)|Pecho al suelo, codos a 45°.
+    Press de pecho con mancuernas|Tumbado en el suelo o banco.
+    Flexiones inclinadas en la encimera|Cuerpo recto, baja el pecho a la encimera.
+    Press de pecho con banda|Banda por la espalda, empuja al frente.
+    Flexiones con pausa abajo|Pausa de 1 s cerca del suelo.`) },
+  { re: /aperturas|cruce de poleas|pec deck/, ctx: "gym", pool: VX(`
+    Aperturas en polea|Brazos un poco doblados, abraza un árbol.
+    Cruce de poleas|Junta las manos delante del pecho.
+    Pec deck|Pausa de 1 s con los brazos juntos.
+    Aperturas con mancuernas|Baja abriendo hasta notar el pecho estirado.
+    Aperturas inclinadas con mancuernas|Banco a 30°.
+    Cruce de poleas de abajo arriba|Poleas bajas, sube hacia la barbilla.`) },
+  { re: /press (militar|arnold|de hombro|landmine)/, ctx: "gym", pool: VX(`
+    Press militar de pie|Glúteo apretado, barra por encima de la cabeza.
+    Press militar con mancuernas|Sentado o de pie, sin arquear la espalda.
+    Press Arnold|Gira las palmas mientras subes.
+    Press de hombro en máquina|Recorrido completo y controlado.
+    Press landmine a una mano|Barra en ángulo, empuja hacia arriba y adelante.
+    Press de hombro a una mano|De pie, el core no deja inclinarse.
+    Press Z sentado en el suelo|Sin respaldo: tronco firme.`) },
+  { re: /press de hombro/, ctx: "home", pool: VX(`
+    Press de hombro con mancuernas|Sin arquear la espalda.
+    Press de hombro sentada|Espalda apoyada.
+    Press de hombro con banda|Banda bajo los pies, empuja arriba.
+    Press de hombro a una mano|Un brazo cada vez, abdomen firme.`) },
+  { re: /elevacion(es)? lateral(es)?(?! de pierna)/, ctx: "any", pool: VX(`
+    Elevaciones laterales|Sube hasta los hombros, sin impulso.
+    Elevación lateral en polea|Tensión constante.
+    Elevaciones laterales con pausa|1 s arriba.
+    Elevación lateral inclinada|Agarrado a un soporte, cuerpo inclinado.
+    Elevación lateral en máquina|Codos guían el movimiento.
+    Elevaciones laterales con banda|Banda bajo el pie.`) },
+  { re: /pajaros|reverse pec deck/, ctx: "gym", pool: VX(`
+    Pájaros con mancuernas|Inclinado, abre los brazos con los codos suaves.
+    Pájaros en polea|Cruza los cables y abre.
+    Reverse pec deck|Pausa con los brazos abiertos.
+    Face pull|Codos altos, tira hacia la cara.
+    Y en banco inclinado|Boca abajo, sube los brazos en Y.`) },
+  { re: /dominadas|jalon/, ctx: "gym", pool: VX(`
+    Dominadas o jalón al pecho|Pecho arriba, lleva los codos a los bolsillos.
+    Jalón agarre estrecho|Agarre en V, baja al pecho.
+    Jalón agarre neutro|Palmas enfrentadas, codos hacia abajo.
+    Dominadas asistidas|Con banda o máquina, recorrido completo.
+    Jalón a una mano|Un brazo, gira un poco el tronco al final.
+    Dominadas supinas o jalón supino|Palmas hacia ti, bíceps y dorsal.
+    Jalón con brazos rectos en polea|Brazos estirados, baja con el dorsal.`) },
+  { re: /jalon|pull-apart/, ctx: "home", pool: VX(`
+    Jalón con banda|Banda alta, lleva los codos abajo.
+    Jalón con banda de rodillas|De rodillas, tira hacia el pecho.
+    Pull-apart con banda|Separa la banda a la altura del pecho.
+    Jalón con banda a una mano|Un brazo, sin girar el tronco.`) },
+  { re: /remo (con barra|con mancuerna|a una mano|en polea|en maquina|invertido|pendlay|meadows)/, ctx: "gym", pool: VX(`
+    Remo con barra|Espalda inclinada y firme, barra al ombligo.
+    Remo con mancuerna|Apoyado en el banco, codo hacia la cadera.
+    Remo en polea baja|Pecho alto, junta las escápulas.
+    Remo en máquina con pecho apoyado|La espalda baja descansa.
+    Remo invertido|Cuerpo recto bajo la barra, pecho a la barra.
+    Remo Pendlay|Desde el suelo cada repetición, explosivo.
+    Remo en polea a una mano|Gira un poco al final.
+    Remo Meadows|Barra en esquina, tirón a una mano.`) },
+  { re: /remo (con banda|con mancuerna|invertido en mesa)/, ctx: "home", pool: VX(`
+    Remo con banda elástica|Junta las escápulas al final.
+    Remo con mancuerna apoyada|Una mano en una silla, codo a la cadera.
+    Remo invertido en mesa|Debajo de una mesa firme, pecho al borde.
+    Remo con banda a una mano|Sin girar el tronco.
+    Remo con banda sentada|Piernas estiradas, banda en los pies.`) },
+  { re: /pullover/, ctx: "gym", pool: VX(`
+    Pullover en polea|Brazos casi rectos, baja con el dorsal.
+    Pullover con mancuerna|Tumbado en el banco, estira y vuelve.
+    Pullover con banda|Banda alta, brazos rectos.`) },
+  { re: /^curl (con|martillo|inclinado|predicador|concentrado|en polea|de biceps|arana)/, ctx: "gym", pool: VX(`
+    Curl con barra|Codos pegados, sin balancear.
+    Curl con barra Z|Agarre cómodo para las muñecas.
+    Curl martillo|Palmas enfrentadas.
+    Curl inclinado con mancuernas|Brazos colgando por detrás del cuerpo.
+    Curl predicador|Brazos apoyados, baja del todo.
+    Curl concentrado|Codo en el muslo, pausa arriba.
+    Curl en polea|Tensión constante.
+    Curl araña|Pecho apoyado en el banco inclinado.`) },
+  { re: /^curl (de biceps|martillo|con banda)/, ctx: "home", pool: VX(`
+    Curl de bíceps|Codos pegados al cuerpo.
+    Curl martillo|Palmas enfrentadas.
+    Curl con banda|Banda bajo los pies.
+    Curl alterno con pausa|1 s arriba cada brazo.`) },
+  { re: /triceps|press frances|fondos en (silla|banco)/, ctx: "any", pool: VX(`
+    Extensión de tríceps en polea|Codos quietos, estira del todo.
+    Extensión de tríceps en polea con cuerda|Separa la cuerda abajo.
+    Extensión de tríceps sobre la cabeza|Codos apuntando al frente.
+    Press francés|Barra Z a la frente, codos quietos.
+    Patada de tríceps|Inclinado, estira el brazo atrás.
+    Fondos entre bancos|Hombros abajo, baja a 90°.
+    Extensión de tríceps con banda|Banda alta, estira hacia abajo.`) },
+  { re: /encogimientos/, ctx: "gym", pool: VX(`
+    Encogimientos con mancuernas|Sube los hombros a las orejas, pausa.
+    Encogimientos con barra|Sin girar los hombros.
+    Farmer's carry pesado|Camina erguido 30–40 m.`) },
+  { re: /^farmer|suitcase|paseo de camarero/, ctx: "gym", noProg: [2], pool: VX(`
+    Farmer's carry a una mano|No te inclines hacia el peso.
+    Farmer's carry pesado|Pasos cortos, hombros atrás.
+    Suitcase carry|Un peso a un lado, tronco recto.
+    Paseo de camarero|Kettlebell por encima de la cabeza, brazo firme.
+    Carry en rack con kettlebells|Pesos a la altura del pecho.`) },
+  { re: /press pallof|pallof press|lenador|arrastre de disco|toques de hombro/, ctx: "any", pool: VX(`
+    Press Pallof|Empuja al frente sin dejar que te gire.
+    Pallof press con giro|Lleva las manos de lado a lado sin girar la cadera.
+    Leñador con banda o polea|Gira desde la cadera, brazos rectos.
+    Toques de hombro en plancha|Sin mover la cadera.
+    Plancha con arrastre de disco|Arrastra el disco de lado a lado.
+    Pallof press de rodillas|Medio arrodillado, tronco firme.`) },
+  { re: /plancha lateral/, ctx: "any", noProg: [5], pool: VX(`
+    Plancha lateral|Cuerpo en línea.
+    Plancha lateral con elevación de cadera|Sube y baja la cadera controlado.
+    Plancha lateral con rodilla al pecho|Lleva la rodilla de arriba al pecho.
+    Plancha lateral con rotación|Mano de arriba bajo el cuerpo y vuelve.`) },
+  { re: /^plancha( \(|$)|hollow|rueda abdominal/, ctx: "any", noProg: [5], pool: VX(`
+    Plancha|Glúteo y abdomen apretados.
+    Hollow hold o dead bug|Zona lumbar pegada al suelo.
+    Rueda abdominal|Rodillas en el suelo, no arquees.
+    Plancha con elevación de brazo|Alterna brazos sin mover la cadera.
+    Plancha con caminata de manos|Baja y sube de codos a manos.`) },
+  { re: /dead bug|bird dog|superman/, ctx: "any", noProg: [5], pool: VX(`
+    Dead bug|Zona lumbar pegada al suelo.
+    Bird dog|Brazo y pierna contrarios, sin mover la cadera.
+    Bird dog con pausa|2 s estirado.
+    Superman|Brazos y piernas arriba, mirada al suelo.
+    Dead bug con banda|Banda sujeta por encima, más tensión en el abdomen.`) },
+  { re: /russian twist|crunch bicicleta/, ctx: "any", pool: VX(`
+    Russian twist con balón|Gira desde el tronco.
+    Crunch bicicleta|Codo hacia la rodilla contraria, lento.
+    Giro ruso con pies en el suelo|Más estable, mismo giro.
+    Leñador con banda o polea|Gira desde la cadera.`) },
+  { re: /kettlebell swing|push press|thruster|cargada/, ctx: "gym", pool: VX(`
+    Kettlebell swing|Empuje de cadera, brazos relajados.
+    Push press con mancuernas|Pequeña flexión de piernas y empuja arriba.
+    Cargada colgante con mancuernas|Salto y recibe en los hombros.
+    Kettlebell swing a una mano|El core no deja girar.
+    Thruster con mancuernas|Sentadilla y empuje en un solo gesto.
+    Push press|Barra: flexión rápida y empuje explosivo.`) },
+  { re: /salto vertical|squat jump|pogo|split jumps|caida desde cajon|salto al cajon|tuck jump/, ctx: "gym", pool: VX(`
+    Salto vertical con contramovimiento|Brazos arriba y aterriza suave.
+    Squat jump (salto desde sentadilla)|Pausa abajo y salta.
+    Saltos de tobillo (pogo jumps)|Rebotes rápidos con tobillos firmes.
+    Saltos en zancada (split jumps)|Cambia de pierna en el aire.
+    Caída desde cajón y estabiliza|Aterriza y aguanta 2 s.
+    Salto al cajón|Sube de un salto y baja andando.
+    Salto vertical a una pierna|Aterriza en la misma pierna y estabiliza.
+    Salto con rodillas al pecho|Rodillas arriba, aterrizaje suave.`) },
+  { re: /skater|salto lateral a una pierna|saltos laterales/, ctx: "gym", pool: VX(`
+    Skater jumps (salto lateral)|Salta de lado y frena en una pierna.
+    Salto lateral a una pierna y estabiliza|Aguanta 2 s al caer.
+    Saltos laterales sobre valla|Pies juntos, rápido.
+    Salto lateral al cajón|Sube de lado, baja andando.
+    Saltos laterales a dos pies sobre línea|Rápidos y cortos.
+    Salto lateral con rebote|Salta, frena y vuelve sin pausa.`) },
+  { re: /lanzamiento|slam/, ctx: "gym", pool: VX(`
+    Lanzamiento lateral balón medicinal|Contra la pared, gira la cadera.
+    Lanzamiento por encima de la cabeza|Como un remate, contra la pared o el suelo.
+    Lanzamiento rotacional frontal (scoop toss)|De abajo arriba con giro.
+    Lanzamiento de pecho con balón medicinal|Explosivo al frente.
+    Slam con balón medicinal|Arriba del todo y al suelo con fuerza.
+    Slam lateral|Lanza al suelo a un lado, alterna.
+    Lanzamiento de revés con balón medicinal|Gesto de revés, cadera primero.`) },
+  { re: /sprint|salida de reaccion|salida hacia atras|salida en caida/, ctx: "gym", pool: VX(`
+    Sprint 5 m desde split-step|Split-step y sal explosivo.
+    Sprint 10 m reactivo|Sal a la señal del compañero.
+    Salida hacia atrás + giro y sprint|Como cuando te pasan un globo.
+    Sprint en abanico 3 conos|Sal a cada cono y vuelve al centro.
+    Salida de reacción a señal|Atento a la señal y sal.
+    Salto lateral y sprint|Salto lateral, frena y sprint.
+    Desplazamiento lateral + sprint|Dos pasos laterales y sprint.
+    Salida en caída|Déjate caer adelante y arranca.
+    Sprint 5-10-5|5 m, cambio, 10 m, cambio, 5 m.`) },
+  { re: /escalera|split-step \+|split step \+|desplazamiento|pasos cruzados|salida a (bola|pared)|test t|estrella de|atrapar pelota|red-fondo|juego de espejo|hexagono|cuatro esquinas|carioca|reaccion a colores|padel de sombra|caza de pelota|paso cruzado/, ctx: "gym", pool: VX(`
+    Escalera de coordinación|Pies rápidos, mirada al frente.
+    Split-step + reacción a señal|Split-step y sal hacia donde te indiquen.
+    Desplazamientos en X por la pista|Red y fondo en diagonal.
+    Pasos cruzados hacia atrás|Como para un globo.
+    Desplazamiento lateral con banda|Banda en las rodillas, pasos cortos.
+    Salida a bola tras pared|Gira y sal a buscar la bola.
+    Test T de agilidad|Frontal, lateral y atrás.
+    Estrella de 5 conos|Sal a cada cono y vuelve al centro.
+    Atrapar pelota que cae|Suelta tu compañero, atrápala antes del segundo bote.
+    Red-fondo con globo|Sube a la red y retrocede al globo.
+    Juego de espejo|Copia los movimientos de tu compañero.
+    Saltos en hexágono|Pies juntos, sal y vuelve al centro.
+    Cuatro esquinas de la pista|Toca cada esquina y vuelve.
+    Carioca|Cruza los pies por delante y por detrás.
+    Reacción a colores|Sal al cono del color que digan.
+    Salida a pared lateral|Sal a la pared y vuelve.
+    Pádel de sombra|Golpes sin bola con desplazamiento real.
+    Malabares con dos bolas|Coordinación ojo-mano: dos bolas en el aire.
+    Botes alternos con la pala|Alterna cara y canto de la pala sin que caiga.
+    Escalera + recepción de bola|Haz la escalera y atrapa la bola que te lanzan.`) },
+  { re: /movilidad de cadera|gato-camello|perro boca abajo|postura del nino|mejor estiramiento|rotacion toracica|apertura (de pecho|toracica)|estiramiento de (flexor|isquios|pecho)|paloma|mariposa|torsion tumbado|saludo al sol/, ctx: "home", noProg: [], pool: VX(`
+    Gato-camello|Columna de arriba abajo, respirando.
+    Perro boca abajo|Talones hacia el suelo, espalda larga.
+    Postura del niño|Respira hacia la espalda.
+    El mejor estiramiento del mundo|Zancada, codo al suelo y giro.
+    Rotación torácica en cuadrupedia|Mano en la nuca, abre el codo al techo.
+    Apertura de pecho en pared|Brazo en la pared, gira el cuerpo.
+    Movilidad de cadera 90/90|Cambia de lado sin manos si puedes.
+    Estiramiento de flexor de cadera|Rodilla en el suelo, glúteo apretado.
+    Estiramiento de isquios con banda|Pierna estirada, tira suave.
+    Paloma (estiramiento de glúteo)|Respira y relaja.
+    Mariposa sentado|Plantas juntas, rodillas al suelo.
+    Torsión tumbado|Rodillas a un lado, hombros en el suelo.`) },
+  { re: /marcha rapida|bici estatica|eliptica|caminar (rapido|en cuesta)|paseo a buen ritmo|paseo con cuestas|trote suave|remo ergometro o con banda/, ctx: "home", pool: VX(`
+    Marcha rápida|Ritmo que te deje hablar con algo de esfuerzo.
+    Bici estática con cambios de ritmo|1 min algo más rápido, 1 min suave.
+    Caminar en cuesta o elíptica|Sube el ritmo poco a poco.
+    Paseo con cuestas suaves|Brazos activos.
+    Elíptica a ritmo constante|Respiración cómoda.
+    Subir y bajar escaleras suave|Pisa entero cada escalón.
+    Marcha con elevación de rodillas|Brazos coordinados.`) },
+];
+const FAM_NAMES = new Map(); // nombre → pista y vídeo para ejercicios nuevos
+FAMILIES.forEach((f) => f.pool.forEach((x) => FAM_NAMES.set(plain(x.n), x)));
+function famOf(name, prog) {
+  const n = plain(name), ctx = [3, 5].includes(prog) ? "home" : "gym";
+  if (prog === 2 && /skierg|remo ergometro|wall ball|sled|burpee|^carrera|zancadas con saco|farmer|bici de aire|progresivos/.test(n)) return null; // estaciones HYROX: siempre igual
+  if (prog === 5 && /suelo pelvico|respiracion|exhalacion|toques de talon|dead bug|bird dog|plancha/.test(n)) return null; // post parto: el core se progresa, no se cambia
+  return FAMILIES.find((f) => (f.ctx === ctx || f.ctx === "any") && !(f.noProg || []).includes(prog) && f.re.test(n)) || null;
+}
+// Ejercicio de la semana w para la rutina V de una sesión. Devuelve el ejercicio [nombre, pista, unidad, vídeo].
+function weekEx(d, w, V, i, e, prog, used) {
+  const base = ["A", "B", "C"];
+  const same = (a, b) => (d.ex[a] || []).map((x) => plain(x[0])).join("|") === (d.ex[b] || []).map((x) => plain(x[0])).join("|");
+  const dupC = V === "C" && same("C", "A"), dupB = V === "B" && same("B", "A");
+  if (w <= 3 && !dupC && !dupB) return e;
+  const f = famOf(e[0], prog); if (!f) return e;
+  const ok = (x) => !(prog === 5 && x.no5) && !(prog === 1 && /salto.*cajon/.test(plain(x.n))) && !used.has(plain(x.n)); // pádel: sin saltos al cajón
+  const names = (vs) => new Set(vs.flatMap((v) => (d.ex[v] || []).map((x) => plain(x[0]))));
+  const allABC = names(base), near = names([V, "ABC"[(w + 1) % 3]]);   // esta rutina y la de la semana anterior
+  let all = f.pool.filter((x) => ok(x) && !allABC.has(plain(x.n)));
+  if (all.length < 5) all = f.pool.filter((x) => ok(x) && !near.has(plain(x.n)));
+  if (!all.length) all = f.pool.filter((x) => ok(x) && plain(x.n) !== plain(e[0]));
+  if (!all.length) return e;
+  const pick = all[(w + i * 2 + d.key.length) % all.length];
+  used.add(plain(pick.n));
+  return [pick.n, pick.c || e[1], e[2], pick.n];
+}
+
 function i18nToday() { const d = new Date(); return "Hoy es " + DOW[todayDow()].toLowerCase() + ", " + d.getDate() + " de " + ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][d.getMonth()]; }
 function renderPlan() {
   const who = me.is_admin && viewAs ? viewAs : me, other = who !== me;
@@ -563,7 +981,7 @@ function renderPlan() {
     return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][SD.findIndex((x) => x.key === d.key) % 3]})">
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
-      ${((u) => d.ex[VAR(week)].map((e0, i) => personalEx(pz, d.swapKey || d.key, VAR(week), i, e0, u)))(new Set()).filter(Boolean).map(({ e, tag }) => { const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
+      ${((u, uw) => d.ex[VAR(week)].map((e0, i) => personalEx(pz, d.swapKey || d.key, VAR(week), i, weekEx(d, week, VAR(week), i, e0, planProg, uw), u)))(new Set(), new Set()).filter(Boolean).map(({ e, tag }) => { const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
       ${d.key === runKey ? runHTML(pz, p, level) : finisherHTML(pz)}
       <div class="note">${esc(d.note)}</div>
       <div class="done-row">${other ? `<span class="pill ${isDone ? "" : "off"}">${isDone ? "✓ Hecha por " + esc(who.name.split(" ")[0]) : "Aún sin hacer"}</span>` : `<button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button>`}</div></article>`;
@@ -885,7 +1303,7 @@ function customHTML() {
     return `<details style="margin-top:10px" ${detail.open?.has(d.key) ? "open" : ""} data-cday="${esc(d.key)}"><summary><b>${esc(d.title)}</b> <span class="muted" style="font-size:13px">${changed ? `· ${changed} cambio${changed > 1 ? "s" : ""}` : ""}</span></summary>${rows}</details>`;
   };
   return `<div class="panel" id="customPanel"><h3>Plan personalizado</h3>
-    <p class="muted" style="font-size:14px;margin:4px 0 10px">La app adapta el plan a su objetivo y a su lesión. Aquí lo ves y puedes cambiar o quitar ejercicios solo para ${esc(a.name)}.</p>
+    <p class="muted" style="font-size:14px;margin:4px 0 10px">Aquí ves las rutinas A, B y C. Desde la semana 4A la app cambia sola cada ejercicio por otro con el mismo objetivo, para que cada semana sea distinta. La app adapta el plan a su objetivo y a su lesión. Aquí lo ves y puedes cambiar o quitar ejercicios solo para ${esc(a.name)}.</p>
     <div class="label">Adaptación automática</div>
     <div class="chips" style="margin-top:6px"><button class="chip" data-cauto="1" aria-pressed="${autoOn}">Activada</button><button class="chip" data-cauto="0" aria-pressed="${!autoOn}">Desactivada</button></div>
     <div class="label" style="margin-top:12px">Días por semana</div>
