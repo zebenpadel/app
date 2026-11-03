@@ -937,6 +937,79 @@ function weekEx(d, w, V, i, e, prog, used) {
   return [pick.n, pick.c || e[1], e[2], pick.n];
 }
 
+// =====================================================================
+//  ISOMETRÍA: 2 ejercicios isométricos al final de cada sesión, en todos los programas.
+//  Uno de tren inferior y otro de tren superior o core. Cambian cada semana.
+// =====================================================================
+const ISO = {
+  gym: {
+    low: VX(`
+      Sentadilla isométrica en pared|Espalda en la pared, rodillas a 90°. Empuja el suelo.
+      Sentadilla búlgara isométrica|Abajo del todo, rodilla de atrás a 2 dedos del suelo.
+      Puente de glúteo isométrico a una pierna|Cadera alta y nivelada, glúteo apretado.
+      Isometría de isquios en puente|Talones en un banco, cadera arriba, empuja con los talones.
+      Copenhague isométrico|Rodilla en el banco, cadera alta y cuerpo en línea.
+      Elevación de talones isométrica a una pierna|Arriba del todo, sin dejar caer el tobillo.
+      Zancada isométrica con mancuernas|Abajo, tronco recto y peso repartido.
+      Peso muerto isométrico a una pierna|Tronco paralelo al suelo, cadera nivelada.`),
+    up: VX(`
+      Plancha con toque de hombros lenta|Sin mover la cadera.
+      Dominada isométrica arriba|Barbilla por encima de la barra. Si no puedes, con banda.
+      Remo invertido isométrico|Pecho pegado a la barra, cuerpo recto.
+      Flexión isométrica a mitad de recorrido|Codos a 90°, cuerpo en bloque.
+      Press Pallof isométrico|Brazos estirados, no dejes que la polea te gire.
+      Hollow hold|Zona lumbar pegada al suelo, brazos y piernas largos.
+      Plancha lateral|Cuerpo en línea, cadera alta.
+      Farmer's hold pesado|De pie, mancuernas pesadas, hombros atrás.`),
+    padel: VX(`
+      Rotación externa isométrica en pared|Codo a 90°, empuja la pared hacia fuera con el dorso de la mano.
+      Agarre isométrico con la pala|Aprieta el mango de la pala al 70 %, muñeca recta.
+      Posición de espera isométrica (split-step)|Piernas flexionadas, peso delante, como esperando el resto.
+      Isometría de muñeca contra resistencia|Empuja la mano contra la otra hacia arriba, sin mover.`),
+  },
+  home: {
+    low: VX(`
+      Sentadilla isométrica en pared|Espalda en la pared, rodillas a 90° o más alto si cuesta.
+      Puente de glúteo isométrico|Cadera arriba, glúteo apretado.
+      Zancada isométrica|Abajo, tronco recto, apóyate en una silla si hace falta.
+      Elevación de talones isométrica|Arriba del todo, apóyate en la pared.
+      Isometría de aductores con balón|Tumbado, balón o cojín entre las rodillas, aprieta.
+      Puente de glúteo isométrico a una pierna|Cadera nivelada.`),
+    up: VX(`
+      Plancha|De rodillas si hace falta, abdomen firme.
+      Plancha lateral|De rodillas si hace falta.
+      Flexión isométrica en la encimera|Pecho cerca del borde, cuerpo recto.
+      Remo isométrico con banda|Codos atrás, junta las escápulas y aguanta.
+      Superman isométrico|Brazos y piernas un poco arriba, mirada al suelo.
+      Dead bug isométrico|Brazos y piernas arriba, zona lumbar pegada al suelo.`),
+  },
+  pp: { // post parto: suave y respirando
+    low: VX(`
+      Puente de glúteo isométrico con exhalación|Sube soltando el aire y aguanta respirando.
+      Sentadilla isométrica en pared alta|Poca flexión de rodillas, espalda en la pared.
+      Isometría de aductores con cojín|Aprieta suave el cojín entre las rodillas.
+      Elevación de talones isométrica|Apoyada en la pared.`),
+    up: VX(`
+      Plancha lateral de rodillas|Cadera alta, respira.
+      Flexión isométrica en la encimera|Cuerpo recto, sin abombar la tripa.
+      Remo isométrico con banda|Junta las escápulas y aguanta.
+      Bird dog isométrico|Brazo y pierna contrarios, aguanta respirando.`),
+  },
+};
+const ISO_DOSE = { // por fase: [normal, post parto]
+  0: ["3 × 20 s", "2 × 15–20 s"], 1: ["3 × 30 s", "2 × 20–30 s"], 2: ["4 × 30–40 s", "3 × 30 s"], 3: ["2 × 20 s", "2 × 20 s"],
+};
+function isoHTML(pz, prog, d, w, phase, sessIdx) {
+  const set = prog === 5 ? ISO.pp : [3].includes(prog) ? ISO.home : ISO.gym;
+  const pick = (pool, k) => pool[(w * 2 + sessIdx * 3 + k) % pool.length];
+  const second = prog === 1 && (w + sessIdx) % 2 === 0 ? pick(set.padel, 0) : pick(set.up, 1);
+  const list = [pick(set.low, 0), second];
+  const dose = (ISO_DOSE[phase] || ISO_DOSE[0])[prog === 5 ? 1 : 0];
+  const used = new Set();
+  const rows = list.map((x, i) => personalEx({ ...pz, swaps: {} }, "iso", "A", 100 + i, [x.n, x.c, "", x.n], used)).filter(Boolean).map(({ e, tag }) =>
+    `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(dose)}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])} Respira normal, sin aguantar el aire.</span>${vid(e[3] + " isométrico")}</div>`).join("");
+  return rows ? `<div class="sec">Isometría · al final de la sesión</div>${rows}` : "";
+}
 function i18nToday() { const d = new Date(); return "Hoy es " + DOW[todayDow()].toLowerCase() + ", " + d.getDate() + " de " + ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][d.getMonth()]; }
 function renderPlan() {
   const who = me.is_admin && viewAs ? viewAs : me, other = who !== me;
@@ -982,6 +1055,7 @@ function renderPlan() {
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
       ${((u, uw) => d.ex[VAR(week)].map((e0, i) => personalEx(pz, d.swapKey || d.key, VAR(week), i, weekEx(d, week, VAR(week), i, e0, planProg, uw), u)))(new Set(), new Set()).filter(Boolean).map(({ e, tag }) => { const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
+      ${isoHTML(pz, planProg, d, week, p, SD.findIndex((x) => x.key === d.key))}
       ${d.key === runKey ? runHTML(pz, p, level) : finisherHTML(pz)}
       <div class="note">${esc(d.note)}</div>
       <div class="done-row">${other ? `<span class="pill ${isDone ? "" : "off"}">${isDone ? "✓ Hecha por " + esc(who.name.split(" ")[0]) : "Aún sin hacer"}</span>` : `<button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button>`}</div></article>`;
