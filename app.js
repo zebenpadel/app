@@ -51,7 +51,7 @@ let me = null;        // mi ficha
 let P = null;         // programa (solo si estoy activo)
 let viewAs = null, viewDone = {}, viewKey = "", lastViewed = null;   // el entrenador ve "Mi plan" como un atleta concreto
 let planProg = 1;     // programa que se ve en "Mi plan" (el entrenador puede mirar cualquiera)
-const PROGRAMS = { 1: "Pádel", 2: "HYROX", 3: "Mantente activo", 4: "Musculación", 5: "Post parto" };
+const PROGRAMS = { 1: "Pádel", 2: "HYROX", 3: "Mantente activo", 4: "Musculación", 5: "Post parto", 6: "Carrera 5 km", 7: "Carrera 10 km" };
 const progName = (id) => PROGRAMS[id] || "Pádel";
 const myProg = () => (PROGRAMS[me?.program_id] ? me.program_id : 1);
 async function loadProgram(id) { const row = await q(sb.from("program").select("data").eq("id", id).maybeSingle()); return row?.data || null; }
@@ -69,7 +69,7 @@ let selDow = todayDow(), showAllDays = false;
 // Sesiones que hace cada atleta según sus días por semana (3–6). Sin elegir: las del programa sin las "extra".
 const FREQ_DAYS = { 1: [2], 2: [1, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 3, 4], 6: [0, 1, 2, 3, 4, 5] };
 // 1 o 2 días por semana: las sesiones más importantes de cada programa (Musculación 1 día = cuerpo completo)
-const FREQ_LOW = { 1: { 1: ["fuerza"], 2: ["agil"], 3: ["fuerza"], 4: ["full"], 5: ["explo"] }, 2: { 1: ["fuerza", "explo"], 2: ["fuerza", "agil"], 3: ["fuerza", "explo"], 4: ["fuerza", "mu_torso"], 5: ["fuerza", "explo"] } };
+const FREQ_LOW = { 1: { 1: ["fuerza"], 2: ["agil"], 3: ["fuerza"], 4: ["full"], 5: ["explo"], 6: ["agil"], 7: ["agil"] }, 2: { 1: ["fuerza", "explo"], 2: ["fuerza", "agil"], 3: ["fuerza", "explo"], 4: ["fuerza", "mu_torso"], 5: ["fuerza", "explo"], 6: ["explo", "agil"], 7: ["explo", "agil"] } };
 function lowFreq(prog, n, pid) {
   const base = prog.days.filter((d) => !d.extra);
   let keys = FREQ_LOW[n]?.[pid] || base.slice(0, n).map((d) => d.key);
@@ -506,7 +506,7 @@ const PCT_LIFT = /sentadilla (trasera|frontal|goblet|bulgara|hack)|^sentadilla g
 const PCT_NO = /banda|pallof|sin peso|asistid|isometr|cossack|lateral$|con saco|caminando$|alterna$|ligero/;
 const PCT_POWER = { 1: ["55–60", "60–65", "70–75", "60"], 2: ["60–65", "65–70", "70–75", "60–65"] }; // push press, cargadas…
 function pctFor(name, main, extra, phase) {
-  if (![1, 2, 4].includes(planProg)) return "";
+  if (![1, 2, 4, 6, 7].includes(planProg)) return "";
   const n = plain(name); if (!PCT_LIFT.test(n) || PCT_NO.test(n)) return "";
   if (/push press|thruster/.test(n) && !/R[IP][RE]/.test(extra || "")) return PCT_POWER[planProg]?.[phase] || "";
   const m = String(main).match(/×\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*$/); if (!m) return "";
@@ -1049,14 +1049,15 @@ function renderPlan() {
   const runKey = planProg === 4 ? (SD.slice().sort((x, y) => (dowOf(x) < 0 ? 9 : dowOf(x)) - (dowOf(y) < 0 ? 9 : dowOf(y)))[2]?.key) : null;
   let anyPct = false;
   const days = visibleDays.map((d) => {
-    const [main, extra] = personalDose(pz, P.dose[d.key][level][p]);
+    const doseParts = String(P.dose[d.key][level][p]).split("|");
+    const doseAt = (i) => personalDose(pz, doseParts[Math.min(i, doseParts.length - 1)]);
     const k = `${week}-${d.key}`; const isDone = !!D[k];
     return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][SD.findIndex((x) => x.key === d.key) % 3]})">
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
-      ${((u, uw) => d.ex[VAR(week)].map((e0, i) => personalEx(pz, d.swapKey || d.key, VAR(week), i, weekEx(d, week, VAR(week), i, e0, planProg, uw), u)))(new Set(), new Set()).filter(Boolean).map(({ e, tag }) => { const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
+      ${((u, uw) => d.ex[VAR(week)].map((e0, i) => { const r = personalEx(pz, d.swapKey || d.key, VAR(week), i, weekEx(d, week, VAR(week), i, e0, planProg, uw), u); return r && { ...r, i }; }))(new Set(), new Set()).filter(Boolean).map(({ e, tag, i }) => { const [main, extra] = doseAt(i); const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
       ${isoHTML(pz, planProg, d, week, p, SD.findIndex((x) => x.key === d.key))}
-      ${d.key === runKey ? runHTML(pz, p, level) : finisherHTML(pz)}
+      ${d.key === runKey ? runHTML(pz, p, level) : [6, 7].includes(planProg) ? "" : finisherHTML(pz)}
       <div class="note">${esc(d.note)}</div>
       <div class="done-row">${other ? `<span class="pill ${isDone ? "" : "off"}">${isDone ? "✓ Hecha por " + esc(who.name.split(" ")[0]) : "Aún sin hacer"}</span>` : `<button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button>`}</div></article>`;
   }).join("");
