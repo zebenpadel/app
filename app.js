@@ -49,7 +49,10 @@ const vid = (q) => `<a class="vid" href="${esc(videoUrl(q))}" target="_blank" re
 let sb = null;
 let me = null;        // mi ficha
 let P = null;         // programa (solo si estoy activo)
-let viewAs = null, viewDone = {}, viewKey = "", lastViewed = null;   // el entrenador ve "Mi plan" como un atleta concreto
+let viewAs = null, viewDone = {}, viewKey = "", lastViewed = null;
+// Carrera extra (5 o 10 km) que el entrenador añade a atletas de Musculación: custom.addon = { prog: 6|7, n: 1–3 }
+let addonView = false, addonRender = false; const ADDON_P = {};
+const addonOf = (a) => { const x = a?.custom?.addon; return x && [6, 7].includes(+x.prog) ? { prog: +x.prog, n: Math.min(3, Math.max(1, +x.n || 2)) } : null; };   // el entrenador ve "Mi plan" como un atleta concreto
 let planProg = 1;     // programa que se ve en "Mi plan" (el entrenador puede mirar cualquiera)
 const PROGRAMS = { 1: "Pádel", 2: "HYROX", 3: "Mantente activo", 4: "Musculación", 5: "Post parto", 6: "Carrera 5 km", 7: "Carrera 10 km" };
 const progName = (id) => PROGRAMS[id] || "Pádel";
@@ -1011,7 +1014,27 @@ function isoHTML(pz, prog, d, w, phase, sessIdx) {
   return rows ? `<div class="sec">Isometría · al final de la sesión</div>${rows}` : "";
 }
 function i18nToday() { const d = new Date(); return "Hoy es " + DOW[todayDow()].toLowerCase() + ", " + d.getDate() + " de " + ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][d.getMonth()]; }
+// "Mi plan" con pestañas: plan principal y carrera extra
 function renderPlan() {
+  const who0 = me?.is_admin && viewAs ? viewAs : me, ad = addonOf(who0);
+  const bar = ad ? `<div class="chips" style="margin-top:18px"><button class="chip" data-addon="0" aria-pressed="${!addonView}">${esc(progName(who0.program_id))}</button><button class="chip" data-addon="1" aria-pressed="${addonView}">🏃 ${esc(progName(ad.prog))}</button></div>` : "";
+  if (!ad || !addonView) { addonView = false; renderPlanCore(); if (bar) $("#app").insertAdjacentHTML("afterbegin", bar); return; }
+  const AP = ADDON_P[ad.prog];
+  if (!AP) { $("#app").innerHTML = bar + `<p class="muted" style="margin-top:24px">Cargando tu plan de carrera…</p>`; loadProgram(ad.prog).then((d) => { if (d) ADDON_P[ad.prog] = d; else { addonView = false; toast("El plan de carrera no está en la base de datos"); } if (tab === "plan") renderPlan(); }); return; }
+  const save = { P, planProg, me, viewAs, done, viewDone, viewKey };
+  // Solo sesiones de carrera (la fuerza ya la hace en musculación): 1 = tirada larga; 2 = series + tirada; 3 = series + rodaje + tirada
+  const keys = { 1: ["agil"], 2: ["explo", "agil"], 3: ["explo", "run_easy", "agil"] }[ad.n];
+  const runSched = { 1: { agil: 5 }, 2: { explo: 1, agil: 5 }, 3: { explo: 1, run_easy: 3, agil: 5 } }[ad.n];   // martes, jueves y sábado
+  const run = { ...who0, program_id: ad.prog, schedule: runSched, custom: { freq: ad.n === 3 ? 3 : ad.n } };
+  const AP2 = { ...AP, freq: { ...AP.freq, 3: keys } };
+  try {
+    P = AP2; planProg = ad.prog; done = {}; viewDone = {}; viewKey = (who0 === me ? "me" : who0.id + "|" + ad.prog); addonRender = true;
+    if (who0 === me) me = run; else viewAs = run;
+    renderPlanCore();
+  } finally { ({ P, planProg, me, viewAs, done, viewDone, viewKey } = save); addonRender = false; }
+  $("#app").insertAdjacentHTML("afterbegin", bar + `<div class="banner" style="margin-top:12px">🏃 <b>Carrera extra</b>: ${ad.n} ${ad.n > 1 ? "sesiones" : "sesión"} de carrera a la semana, además de tu plan de ${esc(progName(who0.program_id))}. Las sesiones de carrera no hace falta marcarlas.</div>`);
+}
+function renderPlanCore() {
   const who = me.is_admin && viewAs ? viewAs : me, other = who !== me;
   if (other && planProg !== (PROGRAMS[who.program_id] ? who.program_id : 1)) {
     const id = PROGRAMS[who.program_id] ? who.program_id : 1;
@@ -1022,7 +1045,7 @@ function renderPlan() {
   if (!P) { $("#app").innerHTML = lockedCard(); return; }
   const D = other ? viewDone : done, sch = other ? (who.schedule || null) : undefined;
   const k0 = other ? who.id + "|" + planProg : "me";
-  if (k0 !== viewKey) { viewKey = k0; week = autoWeek(who, D); selDow = todayDow(); }
+  if (k0 !== viewKey && !addonRender) { viewKey = k0; week = autoWeek(who, D); selDow = todayDow(); }
   const dowOf = (d) => dowOfS(d, sch);
   const LV = P.levels; let level = Math.max(0, LV.indexOf(who.level));
   const VAR = (w) => "ABC"[(w - 1) % 3];
@@ -1046,7 +1069,7 @@ function renderPlan() {
     <p class="muted" style="font-size:14px;margin:6px 0 0">Recuperar también es entrenar. Si te apetece moverte, da un paseo de 20–30 minutos o haz la movilidad del calentamiento.</p>
     <p style="font-size:14px;margin:8px 0 0">Tus sesiones de la semana: <b>${SD.map((d, i) => byDow[i] >= 0 ? `${DOW[byDow[i]]} (${esc(shortName(d))})` : "").filter(Boolean).join(", ")}</b>.</p></div>` : "";
   const pz = personalFor(who, planProg);
-  const runKey = planProg === 4 ? (SD.slice().sort((x, y) => (dowOf(x) < 0 ? 9 : dowOf(x)) - (dowOf(y) < 0 ? 9 : dowOf(y)))[2]?.key) : null;
+  const runKey = planProg === 4 && !addonOf(who) ? (SD.slice().sort((x, y) => (dowOf(x) < 0 ? 9 : dowOf(x)) - (dowOf(y) < 0 ? 9 : dowOf(y)))[2]?.key) : null;
   let anyPct = false;
   const days = visibleDays.map((d) => {
     const doseParts = String(P.dose[d.key][level][p]).split("|");
@@ -1059,7 +1082,7 @@ function renderPlan() {
       ${isoHTML(pz, planProg, d, week, p, SD.findIndex((x) => x.key === d.key))}
       ${d.key === runKey ? runHTML(pz, p, level) : [6, 7].includes(planProg) ? "" : finisherHTML(pz)}
       <div class="note">${esc(d.note)}</div>
-      <div class="done-row">${other ? `<span class="pill ${isDone ? "" : "off"}">${isDone ? "✓ Hecha por " + esc(who.name.split(" ")[0]) : "Aún sin hacer"}</span>` : `<button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button>`}</div></article>`;
+      <div class="done-row">${addonRender ? `<span class="pill">Sesión de carrera extra</span>` : other ? `<span class="pill ${isDone ? "" : "off"}">${isDone ? "✓ Hecha por " + esc(who.name.split(" ")[0]) : "Aún sin hacer"}</span>` : `<button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button>`}</div></article>`;
   }).join("");
   const lastA = me.is_admin && !other ? lastViewed : null;
   const progPick = me.is_admin && !other ? `<div class="chips" style="margin-top:10px">${Object.entries(PROGRAMS).map(([id, n]) => `<button class="chip" data-plan-prog="${id}" aria-pressed="${+id === planProg}">${esc(n)}</button>`).join("")}</div>${lastA ? `<button class="btn ghost sm" style="margin-top:10px" data-plan-ath="${esc(lastA.id)}">Ver el plan de ${esc(lastA.name)}</button>` : ""}` : "";
@@ -1384,6 +1407,10 @@ function customHTML() {
     <div class="label" style="margin-top:12px">Días por semana</div>
     <div class="chips" style="margin-top:6px"><button class="chip" data-cfreq="def" aria-pressed="${!cu.freq}">${autoFreq(pr, a) ? `Lo que pidió (${autoFreq(pr, a)})` : `Programa (${pr.days.filter((d) => !d.extra).length})`}</button>${["1", "2", ...Object.keys(pr.freq || {})].map((n) => `<button class="chip" data-cfreq="${n}" aria-pressed="${String(cu.freq) === n}">${n === "1" ? "1 día" : n + " días"}</button>`).join("")}</div>
     ${(a.program_id || 1) === 5 ? `<p class="muted" style="font-size:13px;margin:6px 0 0">En post parto, como mucho 5 días.</p>` : ""}
+    ${(a.program_id || 1) === 4 ? `<div class="label" style="margin-top:12px">Carrera extra</div>
+    <div class="chips" style="margin-top:6px">${[["0", "Sin carrera"], ["6", "5 km"], ["7", "10 km"]].map(([k, n]) => `<button class="chip" data-cadd="${k}" aria-pressed="${String(cu.addon?.prog || 0) === k}">${n}</button>`).join("")}</div>
+    ${cu.addon ? `<div class="chips" style="margin-top:6px">${[1, 2, 3].map((n) => `<button class="chip" data-caddn="${n}" aria-pressed="${(cu.addon.n || 2) === n}">${n} día${n > 1 ? "s" : ""} de carrera</button>`).join("")}</div>` : ""}
+    <p class="muted" style="font-size:13px;margin:6px 0 0">Le sale una pestaña más en Mi plan con su plan de carrera, además de musculación.</p>` : ""}
     <div class="label" style="margin-top:12px">Series</div>
     <div class="chips" style="margin-top:6px">${[["auto", "Según objetivo"], ["-1", "−1 serie"], ["0", "Normal"], ["1", "+1 serie"]].map(([k, n]) => `<button class="chip" data-csets="${k}" aria-pressed="${setsSel === k}">${n}</button>`).join("")}</div>
     ${pz.notes.length ? `<ul style="margin:12px 0 0;padding-left:18px;font-size:14px">${pz.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : `<p class="muted" style="font-size:14px;margin:12px 0 0">Sin adaptaciones: el atleta no ha indicado objetivo ni lesión por zonas.</p>`}
@@ -1663,6 +1690,7 @@ document.addEventListener("click", async (e) => {
     if (t.id === "doForgot") return await doForgot(t);
     if (!me) return;
     if (t.dataset.tab) { openId = null; return go(t.dataset.tab); }
+    if (t.dataset.addon) { addonView = t.dataset.addon === "1"; return renderPlan(); }
     if (t.dataset.myprog) { t.disabled = true; try { await rpc("set_my_program", { p_program: +t.dataset.myprog }); me = await loadMe(); toast(`Actividad: ${progName(myProg())}`); renderProfile(); } catch (err) { toast(err.message); t.disabled = false; } return; }
     if (t.id === "who") { openId = null; return go("perfil"); }
 
@@ -1710,6 +1738,16 @@ document.addEventListener("click", async (e) => {
     if (!me.is_admin) return;
     if (tab === "editor" && (await edClick(t))) return;
     if (t.dataset.open) { openId = t.dataset.open; detail = null; return renderAthlete(); }
+    if (t.dataset.cadd || t.dataset.caddn) {
+      const cu = JSON.parse(JSON.stringify(detail.custom || {}));
+      if (t.dataset.cadd === "0") delete cu.addon;
+      else if (t.dataset.cadd) cu.addon = { prog: +t.dataset.cadd, n: cu.addon?.n || 2 };
+      else if (cu.addon) cu.addon.n = +t.dataset.caddn;
+      t.disabled = true;
+      try { await saveCustom(cu); toast(cu.addon ? `Carrera ${cu.addon.prog === 6 ? "5" : "10"} km · ${cu.addon.n} día${cu.addon.n > 1 ? "s" : ""} por semana` : "Sin carrera extra"); redrawCustom(); }
+      catch (err) { $("#cxMsg").textContent = err.message; t.disabled = false; }
+      return;
+    }
     if (t.dataset.cfreq) {
       const cu = JSON.parse(JSON.stringify(detail.custom || {}));
       if (t.dataset.cfreq === "def") delete cu.freq; else cu.freq = +t.dataset.cfreq;
