@@ -480,7 +480,17 @@ function finisherHTML(pz) {
 
 // Semana en la que va cada atleta según lo que ha hecho: un atleta nuevo empieza en la 1A.
 // Si terminó todas las sesiones de su última semana, pasa a la siguiente.
+// Semana por fecha: custom.start = lunes de su semana 1A (lo pone el entrenador). Sube sola cada lunes; tras la 4B vuelve a la 1A.
+const isoDay = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const mondayOf = (d = new Date()) => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
+function calWeek(a) {
+  const st = a?.custom?.start; if (!st || !/^\d{4}-\d{2}-\d{2}$/.test(st)) return null;
+  const [y, m, d] = st.split("-").map(Number), n = Math.floor((mondayOf() - new Date(y, m - 1, d)) / (7 * 864e5));
+  return n < 0 ? 1 : (n % 8) + 1;
+}
+const startFor = (w) => { const x = mondayOf(); x.setDate(x.getDate() - (w - 1) * 7); return isoDay(x); };
 function autoWeek(who = me, D = done) {
+  const cw = calWeek(who); if (cw) return cw;
   if (!sessionsFor(P, who, 1).length) return 1;
   let last = 0; for (let w = 1; w <= 8; w++) if (sessionsFor(P, who, w).some((d) => D[`${w}-${d.key}`])) last = w;
   if (!last) return 1;
@@ -1404,6 +1414,10 @@ function customHTML() {
     <p class="muted" style="font-size:14px;margin:4px 0 10px">Aquí ves las rutinas A, B y C. Desde la semana 4A la app cambia sola cada ejercicio por otro con el mismo objetivo, para que cada semana sea distinta. La app adapta el plan a su objetivo y a su lesión. Aquí lo ves y puedes cambiar o quitar ejercicios solo para ${esc(a.name)}.</p>
     <div class="label">Adaptación automática</div>
     <div class="chips" style="margin-top:6px"><button class="chip" data-cauto="1" aria-pressed="${autoOn}">Activada</button><button class="chip" data-cauto="0" aria-pressed="${!autoOn}">Desactivada</button></div>
+    <div class="label" style="margin-top:12px">Semana del plan</div>
+    <p style="margin:4px 0 6px;font-size:14px">${calWeek({ custom: cu }) ? `Va en la <b>semana ${wkLabel(calWeek({ custom: cu }))}</b>. Sube sola cada lunes.` : `<span class="muted">Automática por sesiones hechas: avanza cuando marca todas las de su semana.</span>`}</p>
+    <div class="chips" style="margin-top:6px">${[1, 2, 3, 4, 5, 6, 7, 8].map((w) => `<button class="chip" data-cweek="${w}" aria-pressed="${calWeek({ custom: cu }) === w}">${wkLabel(w)}</button>`).join("")}</div>
+    ${cu.start ? `<button class="btn ghost sm" style="margin-top:8px" data-cweek="0">Volver a automática por sesiones</button>` : ""}
     <div class="label" style="margin-top:12px">Días por semana</div>
     <div class="chips" style="margin-top:6px"><button class="chip" data-cfreq="def" aria-pressed="${!cu.freq}">${autoFreq(pr, a) ? `Lo que pidió (${autoFreq(pr, a)})` : `Programa (${pr.days.filter((d) => !d.extra).length})`}</button>${["1", "2", ...Object.keys(pr.freq || {})].map((n) => `<button class="chip" data-cfreq="${n}" aria-pressed="${String(cu.freq) === n}">${n === "1" ? "1 día" : n + " días"}</button>`).join("")}</div>
     ${(a.program_id || 1) === 5 ? `<p class="muted" style="font-size:13px;margin:6px 0 0">En post parto, como mucho 5 días.</p>` : ""}
@@ -1738,6 +1752,14 @@ document.addEventListener("click", async (e) => {
     if (!me.is_admin) return;
     if (tab === "editor" && (await edClick(t))) return;
     if (t.dataset.open) { openId = t.dataset.open; detail = null; return renderAthlete(); }
+    if (t.dataset.cweek) {
+      const cu = JSON.parse(JSON.stringify(detail.custom || {})), w = +t.dataset.cweek;
+      if (w) cu.start = startFor(w); else delete cu.start;
+      t.disabled = true;
+      try { await saveCustom(cu); viewKey = ""; toast(w ? `${detail.a.name.split(" ")[0]} va en la semana ${wkLabel(w)}. Cada lunes pasará a la siguiente.` : "Semana automática por sesiones hechas"); redrawCustom(); }
+      catch (err) { $("#cxMsg").textContent = err.message; t.disabled = false; }
+      return;
+    }
     if (t.dataset.cadd || t.dataset.caddn) {
       const cu = JSON.parse(JSON.stringify(detail.custom || {}));
       if (t.dataset.cadd === "0") delete cu.addon;
@@ -1817,6 +1839,7 @@ document.addEventListener("click", async (e) => {
       try {
         await rpc("admin_set_access", { p_user: a.id, p_active: on, p_paid_until: until });
         if (on && !a.active) callFn("notify", { action: "activated", user_id: a.id }).catch(() => {});
+        if (on && !a.active && !(detail.custom || {}).start) await saveCustom({ ...(detail.custom || {}), start: startFor(1) }).catch(() => {});   // al activarlo empieza su 1A esta semana
         athletes = await q(sb.from("profiles").select("*").order("name")); toast("Acceso guardado"); renderAthlete();
       } catch (err) { $("#acMsg").textContent = err.message; t.disabled = false; }
       return;
