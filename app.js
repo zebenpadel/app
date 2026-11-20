@@ -83,7 +83,7 @@ let selDow = todayDow(), showAllDays = false;
 // Sesiones que hace cada atleta según sus días por semana (3–6). Sin elegir: las del programa sin las "extra".
 const FREQ_DAYS = { 1: [2], 2: [1, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 3, 4], 6: [0, 1, 2, 3, 4, 5] };
 // 1 o 2 días por semana: las sesiones más importantes de cada programa (Musculación 1 día = cuerpo completo)
-const FREQ_LOW = { 1: { 1: ["fuerza"], 2: ["agil"], 3: ["fuerza"], 4: ["full"], 5: ["explo"], 6: ["agil"], 7: ["agil"], 8: ["fuerza"] }, 2: { 1: ["fuerza", "explo"], 2: ["fuerza", "agil"], 3: ["fuerza", "explo"], 4: ["fuerza", "mu_torso"], 5: ["fuerza", "explo"], 6: ["explo", "agil"], 7: ["explo", "agil"], 8: ["fuerza", "agil"] } };
+const FREQ_LOW = { 1: { 1: ["fuerza"], 2: ["agil"], 3: ["fuerza"], 4: ["full"], 5: ["explo"], 6: ["agil"], 7: ["agil"], 8: ["fuerza"] }, 2: { 1: ["fuerza", "explo"], 2: ["fuerza", "agil"], 3: ["fuerza", "explo"], 4: ["fuerza", "mu_torso"], 5: ["fuerza", "explo"], 6: ["explo", "agil"], 7: ["explo", "agil"], 8: ["fuerza", "explo"] } };
 function lowFreq(prog, n, pid) {
   const base = prog.days.filter((d) => !d.extra);
   let keys = FREQ_LOW[n]?.[pid] || base.slice(0, n).map((d) => d.key);
@@ -949,7 +949,9 @@ function weekEx(d, w, V, i, e, prog, used) {
   const same = (a, b) => (d.ex[a] || []).map((x) => plain(x[0])).join("|") === (d.ex[b] || []).map((x) => plain(x[0])).join("|");
   const dupC = V === "C" && same("C", "A"), dupB = V === "B" && same("B", "A");
   if (w <= 3 && !dupC && !dupB) return e;
-  if (prog === 8 && i < 2) return e;   // strongman: los dos básicos pesados de cada día no cambian
+  if (e[2] === "sec") return e;
+  if (prog === 8 && i < 3) return e;
+  if ((d.ex[V] || []).slice(0, i).some((x) => x[2] === "sec" && /^WOD/.test(x[0]))) return e;   // el WOD se queda tal cual   // strongman: los dos básicos pesados de cada día no cambian
   const f = famOf(e[0], prog); if (!f) return e;
   const ok = (x) => !(prog === 5 && x.no5) && !(prog === 1 && /salto.*cajon/.test(plain(x.n))) && !used.has(plain(x.n)); // pádel: sin saltos al cajón
   const names = (vs) => new Set(vs.flatMap((v) => (d.ex[v] || []).map((x) => plain(x[0]))));
@@ -1101,7 +1103,9 @@ function renderPlanCore() {
     return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][SD.findIndex((x) => x.key === d.key) % 3]})">
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
-      ${((u, uw) => d.ex[VAR(week)].map((e0, i) => { const r = personalEx(pz, d.swapKey || d.key, VAR(week), i, weekEx(d, week, VAR(week), i, e0, planProg, uw), u); return r && { ...r, i }; }))(new Set(), new Set()).filter(Boolean).map(({ e, tag, i }) => { const [main, extra] = doseAt(i); const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
+      ${((u, uw) => d.ex[VAR(week)].map((e0, i) => { const r = personalEx(pz, d.swapKey || d.key, VAR(week), i, weekEx(d, week, VAR(week), i, e0, planProg, uw), u); return r && { ...r, i }; }))(new Set(), new Set()).filter(Boolean).map(({ e, tag, i }) => { const [main, extra] = doseAt(i);
+        if (e[2] === "sec") return `<div class="sec">${esc(e[0])}${main ? ` · ${esc(main)}` : ""}${extra ? ` · ${esc(extra)}` : ""}</div>`;   // cabecera de parte (Fuerza / WOD)
+        const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
       ${isoHTML(pz, planProg, d, week, p, SD.findIndex((x) => x.key === d.key))}
       ${d.key === runKey ? runHTML(pz, p, level) : [6, 7].includes(planProg) ? "" : finisherHTML(pz)}
       <div class="note">${esc(d.note)}</div>
@@ -1410,6 +1414,7 @@ function customHTML() {
   const day = (d) => {
     let changed = 0;
     const rows = "ABC".split("").map((v) => { const used = new Set(); return `<div class="label" style="margin-top:10px">Rutina ${v}</div>` + (d.ex[v] || []).map((e0, i) => {
+      if (e0[2] === "sec") return `<div class="muted" style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;padding:8px 0 2px">${esc(e0[0])}</div>`;
       const id = `${d.swapKey || d.key}|${v}|${i}`, r = personalEx(pz, d.swapKey || d.key, v, i, e0, used), mine = !!cu.swaps?.[id];
       if (!r || r.tag) changed++;
       if (detail.editing === id) return `<div class="edrow" style="margin-top:6px"><div class="grid2">
@@ -1432,7 +1437,7 @@ function customHTML() {
     <div class="chips" style="margin-top:6px">${[1, 2, 3, 4, 5, 6, 7, 8].map((w) => `<button class="chip" data-cweek="${w}" aria-pressed="${calWeek({ custom: cu }) === w}">${wkLabel(w)}</button>`).join("")}</div>
     ${cu.start ? `<button class="btn ghost sm" style="margin-top:8px" data-cweek="0">Volver a automática por sesiones</button>` : ""}
     <div class="label" style="margin-top:12px">Días por semana</div>
-    <div class="chips" style="margin-top:6px"><button class="chip" data-cfreq="def" aria-pressed="${!cu.freq}">${autoFreq(pr, a) ? `Lo que pidió (${autoFreq(pr, a)})` : `Programa (${pr.days.filter((d) => !d.extra).length})`}</button>${["1", "2", ...Object.keys(pr.freq || {})].map((n) => `<button class="chip" data-cfreq="${n}" aria-pressed="${String(cu.freq) === n}">${n === "1" ? "1 día" : n + " días"}</button>`).join("")}</div>
+    <div class="chips" style="margin-top:6px"><button class="chip" data-cfreq="def" aria-pressed="${!cu.freq}">${autoFreq(pr, a) ? `Lo que pidió (${autoFreq(pr, a)})` : `Programa (${pr.days.filter((d) => !d.extra).length})`}</button>${[...new Set(["1", "2", ...Object.keys(pr.freq || {})])].map((n) => `<button class="chip" data-cfreq="${n}" aria-pressed="${String(cu.freq) === n}">${n === "1" ? "1 día" : n + " días"}</button>`).join("")}</div>
     ${(a.program_id || 1) === 5 ? `<p class="muted" style="font-size:13px;margin:6px 0 0">En post parto, como mucho 5 días.</p>` : ""}
     ${(a.program_id || 1) === 4 ? `<div class="label" style="margin-top:12px">Carrera extra</div>
     <div class="chips" style="margin-top:6px">${[["0", "Sin carrera"], ["6", "5 km"], ["7", "10 km"]].map(([k, n]) => `<button class="chip" data-cadd="${k}" aria-pressed="${String(cu.addon?.prog || 0) === k}">${n}</button>`).join("")}</div>
