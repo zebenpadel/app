@@ -56,6 +56,17 @@ const addonOf = (a) => { const x = a?.custom?.addon; return x && [6, 7].includes
 let planProg = 1;     // programa que se ve en "Mi plan" (el entrenador puede mirar cualquiera)
 const PROGRAMS = { 1: "Pádel", 2: "HYROX", 3: "Mantente activo", 4: "Musculación", 5: "Post parto", 6: "Carrera 5 km", 7: "Carrera 10 km" };
 const progName = (id) => PROGRAMS[id] || "Pádel";
+const PROG_ICON = { 1: "🎾", 2: "🏋️", 3: "🌿", 4: "💪", 5: "🤱", 6: "🏃", 7: "🏃" };
+// Portada: el atleta ve debajo del logo la modalidad que ha elegido (y la carrera extra si la tiene)
+function setModality() {
+  const el = $("#sub"); if (!el) return;
+  if (!el.dataset.orig) el.dataset.orig = el.textContent;
+  if (!me || me.is_admin) { el.hidden = true; return; }
+  const id = myProg(), ad = typeof addonOf === "function" ? addonOf(me) : null;
+  const pill = (pid) => `<span style="display:inline-flex;align-items:center;gap:6px;background:var(--ball);color:var(--ball-ink);border-radius:999px;padding:4px 12px;font:800 13px var(--body);letter-spacing:.06em;text-transform:uppercase">${PROG_ICON[pid] || ""} ${esc(progName(pid))}</span>`;
+  el.innerHTML = `<span style="display:inline-flex;flex-wrap:wrap;gap:6px;align-items:center">${pill(id)}${ad ? pill(ad.prog) : ""}</span>`;
+  el.hidden = false;
+}
 const myProg = () => (PROGRAMS[me?.program_id] ? me.program_id : 1);
 async function loadProgram(id) { const row = await q(sb.from("program").select("data").eq("id", id).maybeSingle()); return row?.data || null; }
 let tab = "plan";
@@ -197,7 +208,7 @@ function needCaptcha() { return CONFIG.TURNSTILE_SITE_KEY && !captchaToken; }
 // =====================================================================
 function setHeader(loggedIn) {
   $("#tabs").hidden = !loggedIn; $("#who").hidden = !loggedIn;
-  if (!loggedIn) { $("#progress").innerHTML = ""; $("#sub").hidden = false; }
+  if (!loggedIn) { $("#progress").innerHTML = ""; const sb0 = $("#sub"); if (sb0.dataset.orig) sb0.textContent = sb0.dataset.orig; sb0.hidden = false; }
 }
 
 function renderAuth(mode = "login", msg = "") {
@@ -326,7 +337,7 @@ async function start(opts = {}) {
       week = autoWeek();
     }
     setHeader(true); setWatermark();
-    $("#sub").hidden = true;
+    setModality();
     $("#who").textContent = initials(me.name);
     const hash = location.hash.replace("#", "");
     if (opts.newUser) { await showRecovery(true); return; }
@@ -1705,7 +1716,7 @@ document.addEventListener("click", async (e) => {
     if (!me) return;
     if (t.dataset.tab) { openId = null; return go(t.dataset.tab); }
     if (t.dataset.addon) { addonView = t.dataset.addon === "1"; return renderPlan(); }
-    if (t.dataset.myprog) { t.disabled = true; try { await rpc("set_my_program", { p_program: +t.dataset.myprog }); me = await loadMe(); toast(`Actividad: ${progName(myProg())}`); renderProfile(); } catch (err) { toast(err.message); t.disabled = false; } return; }
+    if (t.dataset.myprog) { t.disabled = true; try { await rpc("set_my_program", { p_program: +t.dataset.myprog }); me = await loadMe(); setModality(); toast(`Actividad: ${progName(myProg())}`); renderProfile(); } catch (err) { toast(err.message); t.disabled = false; } return; }
     if (t.id === "who") { openId = null; return go("perfil"); }
 
     // Plan
