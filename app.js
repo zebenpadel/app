@@ -54,9 +54,9 @@ let viewAs = null, viewDone = {}, viewKey = "", lastViewed = null;
 let addonView = false, addonRender = false; const ADDON_P = {};
 const addonOf = (a) => { const x = a?.custom?.addon; return x && [6, 7].includes(+x.prog) ? { prog: +x.prog, n: Math.min(3, Math.max(1, +x.n || 2)) } : null; };   // el entrenador ve "Mi plan" como un atleta concreto
 let planProg = 1;     // programa que se ve en "Mi plan" (el entrenador puede mirar cualquiera)
-const PROGRAMS = { 1: "Pádel", 2: "HYROX", 3: "Mantente activo", 4: "Musculación", 5: "Post parto", 6: "Carrera 5 km", 7: "Carrera 10 km" };
+const PROGRAMS = { 1: "Pádel", 2: "HYROX", 3: "Mantente activo", 4: "Musculación", 5: "Post parto", 6: "Carrera 5 km", 7: "Carrera 10 km", 8: "Strongman" };
 const progName = (id) => PROGRAMS[id] || "Pádel";
-const PROG_ICON = { 1: "🎾", 2: "🏋️", 3: "🌿", 4: "💪", 5: "🤱", 6: "🏃", 7: "🏃" };
+const PROG_ICON = { 1: "🎾", 2: "🏋️", 3: "🌿", 4: "💪", 5: "🤱", 6: "🏃", 7: "🏃", 8: "🪨" };
 // Portada: el atleta ve debajo del logo la modalidad que ha elegido (y la carrera extra si la tiene)
 function setModality() {
   const el = $("#sub"); if (!el) return;
@@ -83,7 +83,7 @@ let selDow = todayDow(), showAllDays = false;
 // Sesiones que hace cada atleta según sus días por semana (3–6). Sin elegir: las del programa sin las "extra".
 const FREQ_DAYS = { 1: [2], 2: [1, 3], 3: [0, 2, 4], 4: [0, 1, 3, 4], 5: [0, 1, 2, 3, 4], 6: [0, 1, 2, 3, 4, 5] };
 // 1 o 2 días por semana: las sesiones más importantes de cada programa (Musculación 1 día = cuerpo completo)
-const FREQ_LOW = { 1: { 1: ["fuerza"], 2: ["agil"], 3: ["fuerza"], 4: ["full"], 5: ["explo"], 6: ["agil"], 7: ["agil"] }, 2: { 1: ["fuerza", "explo"], 2: ["fuerza", "agil"], 3: ["fuerza", "explo"], 4: ["fuerza", "mu_torso"], 5: ["fuerza", "explo"], 6: ["explo", "agil"], 7: ["explo", "agil"] } };
+const FREQ_LOW = { 1: { 1: ["fuerza"], 2: ["agil"], 3: ["fuerza"], 4: ["full"], 5: ["explo"], 6: ["agil"], 7: ["agil"], 8: ["fuerza"] }, 2: { 1: ["fuerza", "explo"], 2: ["fuerza", "agil"], 3: ["fuerza", "explo"], 4: ["fuerza", "mu_torso"], 5: ["fuerza", "explo"], 6: ["explo", "agil"], 7: ["explo", "agil"], 8: ["fuerza", "agil"] } };
 function lowFreq(prog, n, pid) {
   const base = prog.days.filter((d) => !d.extra);
   let keys = FREQ_LOW[n]?.[pid] || base.slice(0, n).map((d) => d.key);
@@ -526,11 +526,11 @@ function runHTML(pz, phase, level) {
 }
 // % de la carga (1RM) según las repeticiones y el RPE/RIR de la fase. Solo ejercicios básicos con peso.
 const PCT = [100, 100, 95, 92, 89, 86, 84, 81, 79, 76, 74, 71, 69, 67, 65, 63, 61, 59, 57, 55, 53];
-const PCT_LIFT = /sentadilla (trasera|frontal|goblet|bulgara|hack)|^sentadilla goblet|peso muerto|press (banca|militar|inclinado|plano|de hombro|landmine|arnold)|push press|hip thrust|remo (con barra|con mancuerna|a una mano|en polea|en maquina)|jalon|prensa|zancada|step-up|thruster|dominadas lastradas/;
+const PCT_LIFT = /sentadilla (trasera|frontal|goblet|bulgara|hack)|^sentadilla goblet|peso muerto|press (banca|militar|inclinado|plano|de hombro|landmine|arnold)|push press|press de banca|sentadilla con pausa|peso muerto|log press|barra de eje|axle|viking press|rack pull|hip thrust|remo (con barra|con mancuerna|a una mano|en polea|en maquina)|jalon|prensa|zancada|step-up|thruster|dominadas lastradas/;
 const PCT_NO = /banda|pallof|sin peso|asistid|isometr|cossack|lateral$|con saco|caminando$|alterna$|ligero/;
 const PCT_POWER = { 1: ["55–60", "60–65", "70–75", "60"], 2: ["60–65", "65–70", "70–75", "60–65"] }; // push press, cargadas…
 function pctFor(name, main, extra, phase) {
-  if (![1, 2, 4, 6, 7].includes(planProg)) return "";
+  if (![1, 2, 4, 6, 7, 8].includes(planProg)) return "";
   const n = plain(name); if (!PCT_LIFT.test(n) || PCT_NO.test(n)) return "";
   if (/push press|thruster/.test(n) && !/R[IP][RE]/.test(extra || "")) return PCT_POWER[planProg]?.[phase] || "";
   const m = String(main).match(/×\s*(\d+)(?:\s*[–-]\s*(\d+))?\s*$/); if (!m) return "";
@@ -939,6 +939,7 @@ FAMILIES.forEach((f) => f.pool.forEach((x) => FAM_NAMES.set(plain(x.n), x)));
 function famOf(name, prog) {
   const n = plain(name), ctx = [3, 5].includes(prog) ? "home" : "gym";
   if (prog === 2 && /skierg|remo ergometro|wall ball|sled|burpee|^carrera|zancadas con saco|farmer|bici de aire|progresivos/.test(n)) return null; // estaciones HYROX: siempre igual
+  if (prog === 8 && /farmer|yoke|atlas|piedra|saco|log |tronco|eje|neumatico|trineo|arrastre|viking|zercher|cuerda|sosten|pinch|kroc|carry/.test(n)) return null; // strongman: eventos e implementos siempre iguales
   if (prog === 5 && /suelo pelvico|respiracion|exhalacion|toques de talon|dead bug|bird dog|plancha/.test(n)) return null; // post parto: el core se progresa, no se cambia
   return FAMILIES.find((f) => (f.ctx === ctx || f.ctx === "any") && !(f.noProg || []).includes(prog) && f.re.test(n)) || null;
 }
@@ -948,6 +949,7 @@ function weekEx(d, w, V, i, e, prog, used) {
   const same = (a, b) => (d.ex[a] || []).map((x) => plain(x[0])).join("|") === (d.ex[b] || []).map((x) => plain(x[0])).join("|");
   const dupC = V === "C" && same("C", "A"), dupB = V === "B" && same("B", "A");
   if (w <= 3 && !dupC && !dupB) return e;
+  if (prog === 8 && i < 2) return e;   // strongman: los dos básicos pesados de cada día no cambian
   const f = famOf(e[0], prog); if (!f) return e;
   const ok = (x) => !(prog === 5 && x.no5) && !(prog === 1 && /salto.*cajon/.test(plain(x.n))) && !used.has(plain(x.n)); // pádel: sin saltos al cajón
   const names = (vs) => new Set(vs.flatMap((v) => (d.ex[v] || []).map((x) => plain(x[0]))));
