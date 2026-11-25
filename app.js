@@ -944,7 +944,47 @@ function famOf(name, prog) {
   return FAMILIES.find((f) => (f.ctx === ctx || f.ctx === "any") && !(f.noProg || []).includes(prog) && f.re.test(n)) || null;
 }
 // Ejercicio de la semana w para la rutina V de una sesión. Devuelve el ejercicio [nombre, pista, unidad, vídeo].
+// Pádel: el día de agilidad alterna. Semanas impares agilidad; semanas pares pliometría (idea del vídeo de Zeben)
+const PX = (n, c, u, v) => [n, c, u, v || n];
+const PLIO = [
+  [PX("Cambios de pie sobre el cajón", "Cajón bajo: pisa arriba con un pie y cambia rápido, contacto corto.", "· 20 contactos", "cambios de pie sobre cajón pliometría"),
+   PX("Saltos en zancada con barra ligera", "Barra con discos pequeños. Cambia de pierna en el aire y aterriza suave.", "· 6 por pierna", "saltos en zancada con barra"),
+   PX("Salto desde sentadilla con barra ligera", "Peso ligero (20–30 % de tu sentadilla). Salta alto y amortigua.", "· 5 saltos", "salto con barra ligera squat jump"),
+   PX("Gemelo con rebote en escalón con mancuernas", "De pie en el borde del escalón: rebotes cortos y elásticos.", "· 12 rebotes", "rebotes de gemelo en escalón"),
+   PX("Salto lateral alrededor del cajón (skater)", "Salta de lado y frena en una pierna, como una salida a la pared.", "· 6 por lado", "skater jumps técnica"),
+   PX("Salto horizontal y estabiliza", "Salta lejos con los dos pies y aguanta 2 s al caer.", "· 5 saltos", "broad jump estabiliza")],
+  [PX("Saltos de tobillo (pogo jumps)", "Rodillas casi rectas, rebotes rápidos.", "· 15 saltos", "pogo jumps técnica"),
+   PX("Split-step + salto lateral", "Split-step y salida lateral explosiva, como en pista.", "· 6 por lado", "split step salto lateral"),
+   PX("Salto lateral a una pierna y estabiliza", "Aguanta 2 s al caer, rodilla alineada.", "· 5 por pierna", "salto lateral a una pierna estabiliza"),
+   PX("Saltos en zancada con barra ligera", "Cambia de pierna en el aire.", "· 6 por pierna", "saltos en zancada con barra"),
+   PX("Cambios de pie sobre el cajón", "Rápido y ligero.", "· 20 contactos", "cambios de pie sobre cajón pliometría"),
+   PX("Salto 180° (giro en el aire)", "Gira en el aire y aterriza mirando atrás, estable.", "· 4 por lado", "salto 180 grados")],
+  [PX("Salto vertical reactivo", "Contacto con el suelo lo más corto posible.", "· 6 saltos", "salto reactivo contacto corto"),
+   PX("Salto desde sentadilla con barra ligera", "Salta alto y amortigua.", "· 5 saltos", "salto con barra ligera squat jump"),
+   PX("Bounding lateral", "Zancadas saltadas de lado, empuja con la pierna de fuera.", "· 6 por lado", "bounding lateral"),
+   PX("Gemelo con rebote en escalón con mancuernas", "Rebotes cortos.", "· 12 rebotes", "rebotes de gemelo en escalón"),
+   PX("Saltos en hexágono", "Pies juntos, sal y vuelve al centro.", "· 2 vueltas", "saltos en hexágono"),
+   PX("Split-step reactivo + sprint 3 m", "Sal a la señal de tu compañero.", "· 6 salidas", "split step reacción sprint")],
+];
+const PLIO_SETS = [["2 series", "3 series", "3 series", "2 series"], ["3 series", "3 series", "4 series", "2 series"],
+                   ["3 series", "4 series", "4 series", "2 series"], ["4 series", "4 series", "5 series", "3 series"]];
+function plioDay(d, w, level, phase) {
+  const ex = PLIO[(w / 2 - 1) % 3];
+  return { ...d, title: "Pliometría", swapKey: "plio", plio: true, ex: { A: ex, B: ex, C: ex },
+    doseOv: `${PLIO_SETS[Math.min(3, level)][phase]} · RPE 7–8`, restOv: "60–90 s entre series",
+    note: "Semana de pliometría: saltos de calidad, no de cansancio. Aterriza suave y en silencio, rodilla alineada con el pie. Si un salto sale lento o feo, para la serie." };
+}
+// Pádel: cada semana de agilidad con ejercicios distintos (la 1A es la rutina original)
+function agilDay(d, w) {
+  const k = (w - 1) / 2; if (k < 1) return d;
+  const fam = (re) => FAMILIES.find((f) => f.ctx === "gym" && f.re.test(re))?.pool || [];
+  const seen = new Set((d.ex.A || []).map((x) => plain(x[0])));
+  const pool = [...fam("escalera"), ...fam("sprint")].filter((x, i, a) => !seen.has(plain(x.n)) && a.findIndex((y) => y.n === x.n) === i);
+  const n = (d.ex.A || []).length || 6, ex = Array.from({ length: n }, (_, i) => pool[((k - 1) * n + i) % pool.length]).map((x) => [x.n, x.c, "", x.n]);
+  return { ...d, swapKey: "agil" + k, plio: true, ex: { A: ex, B: ex, C: ex } };
+}
 function weekEx(d, w, V, i, e, prog, used) {
+  if (d.plio) return e;
   const base = ["A", "B", "C"];
   const same = (a, b) => (d.ex[a] || []).map((x) => plain(x[0])).join("|") === (d.ex[b] || []).map((x) => plain(x[0])).join("|");
   const dupC = V === "C" && same("C", "A"), dupB = V === "B" && same("B", "A");
@@ -1097,12 +1137,13 @@ function renderPlanCore() {
   const runKey = planProg === 4 && !addonOf(who) ? (SD.slice().sort((x, y) => (dowOf(x) < 0 ? 9 : dowOf(x)) - (dowOf(y) < 0 ? 9 : dowOf(y)))[2]?.key) : null;
   let anyPct = false;
   const days = visibleDays.map((d) => {
-    const doseParts = String(P.dose[d.key][level][p]).split("|");
+    if (planProg === 1 && d.key === "agil") d = week % 2 === 0 ? plioDay(d, week, level, p) : agilDay(d, week);
+    const doseParts = String(d.doseOv || P.dose[d.key][level][p]).split("|");
     const doseAt = (i) => personalDose(pz, doseParts[Math.min(i, doseParts.length - 1)]);
     const k = `${week}-${d.key}`; const isDone = !!D[k];
     return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][SD.findIndex((x) => x.key === d.key) % 3]})">
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
-      <div class="dose">Descanso<br>${esc(P.rest[d.key][p])}</div></div>
+      <div class="dose">Descanso<br>${esc(d.restOv || P.rest[d.key][p])}</div></div>
       ${((u, uw) => d.ex[VAR(week)].map((e0, i) => { const r = personalEx(pz, d.swapKey || d.key, VAR(week), i, weekEx(d, week, VAR(week), i, e0, planProg, uw), u); return r && { ...r, i }; }))(new Set(), new Set()).filter(Boolean).map(({ e, tag, i }) => { const [main, extra] = doseAt(i);
         if (e[2] === "sec") return `<div class="sec">${esc(e[0])}${main ? ` · ${esc(main)}` : ""}${extra ? ` · ${esc(extra)}` : ""}</div>`;   // cabecera de parte (Fuerza / WOD)
         const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
