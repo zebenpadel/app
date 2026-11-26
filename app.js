@@ -1079,6 +1079,21 @@ function isoHTML(pz, prog, d, w, phase, sessIdx) {
   return rows ? `<div class="sec">Isometría · al final de la sesión</div>${rows}` : "";
 }
 function i18nToday() { const d = new Date(); return "Hoy es " + DOW[todayDow()].toLowerCase() + ", " + d.getDate() + " de " + ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][d.getMonth()]; }
+// Días de la carrera extra: los días de descanso de su plan principal, lo más repartidos posible.
+// Tirada larga mejor en fin de semana; series lejos de la tirada; rodaje en el hueco que quede.
+function runDays(n, who, mainP, mainProg) {
+  const busy = new Set();
+  if (mainP && mainProg === (+who.program_id || 1)) sessionsFor(mainP, who).forEach((d) => { const v = dowOf(d, who === me ? undefined : (who.schedule || null)); if (v >= 0) busy.add(v); });
+  else [0, 2, 4].forEach((v) => busy.add(v));   // sin datos: lunes, miércoles y viernes de musculación
+  const ALL = [0, 1, 2, 3, 4, 5, 6], free = ALL.filter((v) => !busy.has(v));   // si no hay bastantes días libres, completa con los demás
+  const dist = (a, b) => Math.min(Math.abs(a - b), 7 - Math.abs(a - b)), picked = [];
+  const far = (opts0) => { const left = opts0.filter((v) => !picked.includes(v)), opts = left.length ? left : ALL.filter((v) => !picked.includes(v)); return opts.sort((a, b) => Math.min(...picked.map((p) => dist(b, p))) - Math.min(...picked.map((p) => dist(a, p))) || a - b)[0]; };
+  const agil = [5, 6].find((v) => free.includes(v)) ?? (free.length ? free[free.length - 1] : 5); picked.push(agil);
+  const out = { agil };
+  if (n >= 2) { out.explo = far(free); picked.push(out.explo); }
+  if (n >= 3) { out.run_easy = far(free); picked.push(out.run_easy); }
+  return out;
+}
 // "Mi plan" con pestañas: plan principal y carrera extra
 function renderPlan() {
   const who0 = me?.is_admin && viewAs ? viewAs : me, ad = addonOf(who0);
@@ -1089,7 +1104,7 @@ function renderPlan() {
   const save = { P, planProg, me, viewAs, done, viewDone, viewKey };
   // Solo sesiones de carrera (la fuerza ya la hace en musculación): 1 = tirada larga; 2 = series + tirada; 3 = series + rodaje + tirada
   const keys = { 1: ["agil"], 2: ["explo", "agil"], 3: ["explo", "run_easy", "agil"] }[ad.n];
-  const runSched = { 1: { agil: 5 }, 2: { explo: 1, agil: 5 }, 3: { explo: 1, run_easy: 3, agil: 5 } }[ad.n];   // martes, jueves y sábado
+  const runSched = runDays(ad.n, who0, save.P, save.planProg);   // en sus días de descanso de musculación
   const run = { ...who0, program_id: ad.prog, schedule: runSched, custom: { freq: ad.n === 3 ? 3 : ad.n } };
   const AP2 = { ...AP, freq: { ...AP.freq, 3: keys } };
   try {
@@ -1097,7 +1112,7 @@ function renderPlan() {
     if (who0 === me) me = run; else viewAs = run;
     renderPlanCore();
   } finally { ({ P, planProg, me, viewAs, done, viewDone, viewKey } = save); addonRender = false; }
-  $("#app").insertAdjacentHTML("afterbegin", bar + `<div class="banner" style="margin-top:12px">🏃 <b>Carrera extra</b>: ${ad.n} ${ad.n > 1 ? "sesiones" : "sesión"} de carrera a la semana, además de tu plan de ${esc(progName(who0.program_id))}. Las sesiones de carrera no hace falta marcarlas.</div>`);
+  $("#app").insertAdjacentHTML("afterbegin", bar + `<div class="banner" style="margin-top:12px">🏃 <b>Carrera extra</b>: ${ad.n} ${ad.n > 1 ? "sesiones" : "sesión"} de carrera a la semana, además de tu plan de ${esc(progName(who0.program_id))}. Van en tus días de descanso de musculación. Las sesiones de carrera no hace falta marcarlas.</div>`);
 }
 function renderPlanCore() {
   const who = me.is_admin && viewAs ? viewAs : me, other = who !== me;
