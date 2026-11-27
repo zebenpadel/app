@@ -1067,16 +1067,31 @@ const ISO = {
 const ISO_DOSE = { // por fase: [normal, post parto]
   0: ["3 × 20 s", "2 × 15–20 s"], 1: ["3 × 30 s", "2 × 20–30 s"], 2: ["4 × 30–40 s", "3 × 30 s"], 3: ["2 × 20 s", "2 × 20 s"],
 };
-function isoHTML(pz, prog, d, w, phase, sessIdx) {
+// Pádel · día de Fuerza: 2 ejercicios explosivos cortos antes de la fuerza pesada (lo rápido, primero)
+const ACTIV = [
+  ["Salto vertical con contramovimiento", "Máxima altura, aterriza suave.", "3–4 saltos", "salto vertical contramovimiento"],
+  ["Lanzamiento lateral balón medicinal", "Gira la cadera como en el drive o el revés.", "3–4 por lado", "lanzamiento lateral balón medicinal"],
+  ["Salto horizontal y estabiliza", "Lo más lejos posible y aguanta 2 s.", "3 saltos", "broad jump estabiliza"],
+  ["Lanzamiento por encima de la cabeza", "Como un remate, contra la pared o el suelo.", "4 lanzamientos", "lanzamiento balón medicinal por encima de la cabeza"],
+  ["Skater jumps (salto lateral)", "Salta de lado y frena en una pierna.", "3 por lado", "skater jumps técnica"],
+  ["Slam con balón medicinal", "Explosivo, de arriba al suelo.", "4 slams", "slam balón medicinal"],
+];
+function activHTML(pz, w) {
+  const a = ACTIV[(w * 2) % ACTIV.length], b = ACTIV[(w * 2 + 1) % ACTIV.length], used = new Set();
+  const rows = [a, b].map((x, i) => personalEx({ ...pz, swaps: {} }, "activ", "A", 200 + i, [x[0], x[1], "", x[3]], used)).filter(Boolean).map(({ e, tag }, i) =>
+    `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">2–3 series <small class="muted" style="font:500 12px var(--body)">· ${esc([a, b][i][2])}</small></span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])} Muy rápido y con descanso completo (1–2 min): calidad, no cansancio.</span>${vid(e[3])}</div>`).join("");
+  return rows ? `<div class="sec">Activación explosiva · antes de la fuerza</div>${rows}` : "";
+}
+function isoHTML(pz, prog, d, w, phase, sessIdx, prep) {
   const set = prog === 5 ? ISO.pp : [3].includes(prog) ? ISO.home : ISO.gym;
   const pick = (pool, k) => pool[(w * 2 + sessIdx * 3 + k) % pool.length];
   const second = prog === 1 && (w + sessIdx) % 2 === 0 ? pick(set.padel, 0) : pick(set.up, 1);
   const list = [pick(set.low, 0), second];
-  const dose = (ISO_DOSE[phase] || ISO_DOSE[0])[prog === 5 ? 1 : 0];
+  const dose = prep ? (phase === 3 ? "2 × 30 s" : "2–3 × 30–45 s") : (ISO_DOSE[phase] || ISO_DOSE[0])[prog === 5 ? 1 : 0];
   const used = new Set();
   const rows = list.map((x, i) => personalEx({ ...pz, swaps: {} }, "iso", "A", 100 + i, [x.n, x.c, "", x.n], used)).filter(Boolean).map(({ e, tag }) =>
-    `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(dose)}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])} Respira normal, sin aguantar el aire.</span>${vid(e[3] + " isométrico")}</div>`).join("");
-  return rows ? `<div class="sec">Isometría · al final de la sesión</div>${rows}` : "";
+    `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(dose)}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])} ${prep ? "Al 60–70 % de tu fuerza, sin llegar al fallo. " : ""}Respira normal, sin aguantar el aire.</span>${vid(e[3] + " isométrico")}</div>`).join("");
+  return rows ? `<div class="sec">${prep ? "Isometría de preparación · sin llegar al fallo, 1–2 min y empiezas" : "Isometría · al final de la sesión"}</div>${rows}` : "";
 }
 function i18nToday() { const d = new Date(); return "Hoy es " + DOW[todayDow()].toLowerCase() + ", " + d.getDate() + " de " + ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"][d.getMonth()]; }
 // Días de la carrera extra: los días de descanso de su plan principal, lo más repartidos posible.
@@ -1159,10 +1174,12 @@ function renderPlanCore() {
     return `<article class="day" style="--c:var(${/^--f-(fuerza|explo|agil)$/.test(d.c) ? d.c : ["--f-fuerza", "--f-explo", "--f-agil"][SD.findIndex((x) => x.key === d.key) % 3]})">
       <div class="day-head"><div><div class="label">${esc(dowOf(d) >= 0 ? DOW[dowOf(d)] : d.when)}</div><h3>${esc(d.title)} · ${VAR(week)}</h3></div>
       <div class="dose">Descanso<br>${esc(d.restOv || P.rest[d.key][p])}</div></div>
+      ${planProg === 1 ? isoHTML(pz, planProg, d, week, p, SD.findIndex((x) => x.key === d.key), true) : ""}
+      ${planProg === 1 && d.key === "fuerza" ? activHTML(pz, week) + `<div class="sec">Fuerza</div>` : ""}
       ${((u, uw) => d.ex[VAR(week)].map((e0, i) => { const r = personalEx(pz, d.swapKey || d.key, VAR(week), i, weekEx(d, week, VAR(week), i, e0, planProg, uw), u); return r && { ...r, i }; }))(new Set(), new Set()).filter(Boolean).map(({ e, tag, i }) => { const [main, extra] = doseAt(i);
         if (e[2] === "sec") return `<div class="sec">${esc(e[0])}${main ? ` · ${esc(main)}` : ""}${extra ? ` · ${esc(extra)}` : ""}</div>`;   // cabecera de parte (Fuerza / WOD)
         const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
-      ${isoHTML(pz, planProg, d, week, p, SD.findIndex((x) => x.key === d.key))}
+      ${planProg === 1 ? "" : isoHTML(pz, planProg, d, week, p, SD.findIndex((x) => x.key === d.key))}
       ${d.key === runKey ? runHTML(pz, p, level) : [6, 7].includes(planProg) ? "" : finisherHTML(pz)}
       <div class="note">${esc(d.note)}</div>
       <div class="done-row">${addonRender ? `<span class="pill">Sesión de carrera extra</span>` : other ? `<span class="pill ${isDone ? "" : "off"}">${isDone ? "✓ Hecha por " + esc(who.name.split(" ")[0]) : "Aún sin hacer"}</span>` : `<button class="btn ${isDone ? "ok" : ""}" data-done="${week}|${d.key}" aria-pressed="${isDone}">${isDone ? "✓ Sesión completada" : "Marcar sesión como hecha"}</button>`}</div></article>`;
