@@ -983,6 +983,53 @@ function agilDay(d, w) {
   const n = (d.ex.A || []).length || 6, ex = Array.from({ length: n }, (_, i) => pool[((k - 1) * n + i) % pool.length]).map((x) => [x.n, x.c, "", x.n]);
   return { ...d, swapKey: "agil" + k, plio: true, ex: { A: ex, B: ex, C: ex } };
 }
+// =====================================================================
+//  HYROX: todas las sesiones con Parte 1 · Fuerza + Parte 2 · WOD, distintas cada semana.
+//  La simulación aparece pocas veces y no siempre el mismo día.
+// =====================================================================
+const HX = (n, c, u) => [n, c, u, n];
+const HX_STR = {
+  pierna: { main: [["Sentadilla trasera", "Tronco firme, baja controlado."], ["Peso muerto rumano", "Cadera atrás, barra pegada."], ["Sentadilla frontal", "Codos altos: la posición del wall ball."], ["Peso muerto con trap bar", "Empuja el suelo."], ["Sentadilla búlgara", "Pie atrás en el banco."], ["Hip thrust con barra", "Pausa arriba."]],
+            acc: [["Zancada caminando con mancuernas", "Pasos largos.", "por pierna"], ["Curl nórdico asistido", "Baja lento."], ["Elevación de gemelos a una pierna", "Sube alto, baja lento.", "por pierna"], ["Step-up al cajón con mancuernas", "Sin impulso.", "por pierna"], ["Press Pallof", "Core firme.", "por lado"], ["Copenhague en banco", "Cadera alta.", "por lado"]] },
+  superior: { main: [["Press militar de pie", "Glúteo apretado."], ["Remo con barra", "Espalda firme."], ["Press banca", "Escápulas juntas."], ["Dominadas o jalón al pecho", "Pecho arriba."], ["Push press", "Impulso de piernas."], ["Remo Pendlay", "Desde el suelo."]],
+              acc: [["Remo con mancuerna", "Codo a la cadera.", "por lado"], ["Face pull", "Codos altos."], ["Flexiones", "Cuerpo en bloque."], ["Hollow hold", "Lumbar pegada.", "· 30 s"], ["Farmer's carry", "Pasos cortos.", "· 40 m"], ["Curl martillo", "Agarre fuerte para el trineo."]] },
+  completo: { main: [["Cargada colgante con mancuernas", "Explosiva, recibe en los hombros."], ["Thruster con barra", "Sentadilla y empuje en un gesto."], ["Peso muerto convencional", "Espalda neutra."], ["Zancada con barra", "Paso largo y estable.", "por pierna"], ["Sentadilla goblet con pausa", "2 s abajo."], ["Press de hombro a una mano", "El core no deja inclinarse.", "por lado"]],
+              acc: [["Kettlebell swing", "Cadera explosiva."], ["Remo invertido", "Pecho a la barra."], ["Dead bug", "Lumbar pegada.", "por lado"], ["Zancadas con saco", "Saco en los hombros.", "· 20 m"], ["Rueda abdominal", "Sin arquear."], ["Elevación de gemelos de pie", "Sube alto."]] },
+};
+const HX_WOD = [
+  { t: "WOD · AMRAP (todas las rondas que puedas)", rows: [HX("Carrera", "Ritmo de carrera HYROX.", "· 400 m"), HX("Wall balls", "Abajo hasta la sentadilla completa.", "· 15 reps"), HX("Burpee broad jump", "Salto largo tras cada burpee.", "· 8 reps"), HX("Empuje de trineo (o carry pesado)", "Brazos estirados, pasos cortos.", "· 20 m")] },
+  { t: "WOD · Por rondas: carrera + estación", rows: [HX("Carrera", "Ritmo de carrera.", "· 800 m"), HX("Arrastre de trineo con cuerda (o remo)", "Mano sobre mano.", "· 20 m"), HX("Zancadas con saco", "Rodilla roza el suelo.", "· 20 m")] },
+  { t: "WOD · EMOM (cada minuto un ejercicio, en orden)", rows: [HX("SkiErg", "Tira con todo el cuerpo.", "· 12 cal"), HX("Wall balls", "Respira arriba.", "· 12 reps"), HX("Farmer's carry", "Agarre fuerte.", "· 40 m"), HX("Burpee broad jump", "Ritmo constante.", "· 6 reps")] },
+  { t: "WOD · Chipper por tiempo (de arriba abajo, una vez)", rows: [HX("Remo ergómetro", "Fuerte pero sostenible.", "· 500 m"), HX("Wall balls", "Divide en bloques.", "· 40 reps"), HX("Zancadas con saco", "Saco en los hombros.", "· 30 m"), HX("Burpee broad jump", "Sin parar.", "· 20 reps"), HX("SkiErg", "Termina fuerte.", "· 500 m")] },
+  { t: "WOD · AMRAP (todas las rondas que puedas)", rows: [HX("Bici de aire o assault bike", "Fuerte.", "· 15 cal"), HX("Kettlebell swing", "Cadera explosiva.", "· 15 reps"), HX("Zancadas con saco", "Pasos largos.", "· 10 por pierna"), HX("Flexiones", "Pecho al suelo.", "· 10 reps")] },
+  { t: "WOD · Por rondas: carrera + estación", rows: [HX("Carrera", "Ritmo de carrera.", "· 600 m"), HX("Farmer's carry", "Sin soltar.", "· 50 m"), HX("Wall balls", "Divide si hace falta.", "· 20 reps")] },
+  { t: "WOD · Mini simulación HYROX", fijo: true, rows: [HX("4 rondas: carrera", "Ritmo de carrera HYROX.", "· 1 km"), HX("Ronda 1: SkiErg", "", "· 500 m"), HX("Ronda 2: empuje de trineo", "", "· 25 m"), HX("Ronda 3: arrastre de trineo", "", "· 25 m"), HX("Ronda 4: burpee broad jump", "", "· 40 m")] },
+  { t: "WOD · AMRAP (todas las rondas que puedas)", rows: [HX("Carrera", "Ritmo cómodo.", "· 200 m"), HX("Thruster con mancuernas", "Fluido.", "· 10 reps"), HX("Farmer's carry", "Agarre.", "· 20 m"), HX("Burpees", "Constantes.", "· 8 reps")] },
+  { t: "WOD · Intervalos de carrera comprometida", rows: [HX("Carrera", "Ritmo de carrera, constante.", "· 400 m"), HX("Wall balls", "Nada más terminar de correr.", "· 15 reps"), HX("Descanso", "Andando, recupera.", "· 60 s")] },
+  { t: "WOD · EMOM (cada minuto un ejercicio, en orden)", rows: [HX("Remo ergómetro", "Fuerte.", "· 12 cal"), HX("Thruster con mancuernas", "Sentadilla y empuje.", "· 10 reps"), HX("Empuje de trineo (o carry pesado)", "Pasos cortos.", "· 15 m"), HX("Descanso", "Respira.", "· 1 min")] },
+  { t: "WOD · Escalera de motor", rows: [HX("SkiErg", "Baja la distancia cada ronda: 300 / 250 / 200 m.", "· 300-250-200 m"), HX("Remo ergómetro", "Mismas distancias que el SkiErg.", "· 300-250-200 m"), HX("Burpee broad jump", "Después de cada ronda.", "· 10 reps")] },
+  { t: "WOD · Simulación HYROX completa (iniciación: la mitad de cada estación)", fijo: true, rows: [HX("8 × carrera", "Entre cada estación.", "· 1 km"), HX("SkiErg · Empuje de trineo · Arrastre de trineo", "", "· 1000 m · 50 m · 50 m"), HX("Burpee broad jump · Remo", "", "· 80 m · 1000 m"), HX("Farmer's carry · Zancadas con saco · Wall balls", "", "· 200 m · 100 m · 100 reps")] },
+];
+const HX_MAIN = [["3×10 · RPE 6", "3×8 · RPE 7", "4×6 · RPE 7", "2×8 · RPE 6"], ["4×8 · RPE 7", "4×6 · RPE 8", "5×5 · RPE 8", "3×5 · RPE 7"],
+                 ["4×6 · RPE 7", "5×5 · RPE 8", "5×4 · RPE 8", "3×4 · RPE 7"], ["5×5 · RPE 7", "5×4 · RPE 8", "5×3 · RPE 8–9", "3×3 · RPE 7"]];
+const HX_ACC = ["3×12 · RPE 7", "3×10 · RPE 8", "3×10 · RPE 8", "2×10 · RPE 7"];
+const HX_T = [[12, 15, 18, 12], [15, 18, 22, 15], [18, 22, 26, 18], [20, 25, 30, 20]];
+function hyroxDay(d, w, level, phase, idx) {
+  const type = ["pierna", "superior", "completo"][idx % 3], S = HX_STR[type], L = Math.min(3, level);
+  const pick = (arr, k) => arr[(w + k) % arr.length];
+  const m1 = pick(S.main, 0), m2 = pick(S.main, 3), a1 = pick(S.acc, idx), a2 = pick(S.acc, idx + 3);
+  // WOD distinto cada semana y en cada día; la simulación completa solo en la fase específica
+  let wi = ((w - 1) * 3 + idx) % (HX_WOD.length - 1);
+  if (phase === 2 && idx === (w % 3) && w === 7) wi = HX_WOD.length - 1;
+  const W = HX_WOD[wi];
+  const ex = [["Parte 1 · Fuerza", "", "sec", ""], [m1[0], m1[1], m1[2] || "", m1[0]], [m2[0], m2[1], m2[2] || "", m2[0]],
+              [a1[0], a1[1], a1[2] || "", a1[0]], [a2[0], a2[1], a2[2] || "", a2[0]], ["Parte 2 · " + W.t, W.fijo ? "fijo" : "", "sec", ""], ...W.rows];
+  const dose = ["", HX_MAIN[L][phase], HX_MAIN[L][phase], HX_ACC[phase], HX_ACC[phase], `${HX_T[L][phase]} min · RPE ${["7", "8", "8–9", "6–7"][phase]}`, ...W.rows.map(() => "")].join("|");
+  const names = { pierna: "Fuerza de pierna + WOD", superior: "Fuerza de tren superior + WOD", completo: "Fuerza de cuerpo entero + WOD" };
+  return { ...d, title: names[type], swapKey: "hx" + idx, plio: true, ex: { A: ex, B: ex, C: ex }, doseOv: dose,
+    restOv: "Fuerza: 2–3 min · WOD: sin pausa",
+    note: "Parte 1: fuerza con buena técnica y descanso completo. Parte 2: el WOD a ritmo de competición. Iniciación: peso ligero y menos repeticiones si hace falta. Cada semana cambian los ejercicios y el WOD." };
+}
 function weekEx(d, w, V, i, e, prog, used) {
   if (d.plio) return e;
   const base = ["A", "B", "C"];
@@ -1168,6 +1215,7 @@ function renderPlanCore() {
   let anyPct = false;
   const days = visibleDays.map((d) => {
     if (planProg === 1 && d.key === "agil") d = week % 2 === 0 ? plioDay(d, week, level, p) : agilDay(d, week);
+    if (planProg === 2) d = hyroxDay(d, week, level, p, Math.max(0, SD.findIndex((x) => x.key === d.key)));
     const doseParts = String(d.doseOv || P.dose[d.key][level][p]).split("|");
     const doseAt = (i) => personalDose(pz, doseParts[Math.min(i, doseParts.length - 1)]);
     const k = `${week}-${d.key}`; const isDone = !!D[k];
@@ -1177,7 +1225,7 @@ function renderPlanCore() {
       ${planProg === 1 ? isoHTML(pz, planProg, d, week, p, SD.findIndex((x) => x.key === d.key), true) : ""}
       ${planProg === 1 && d.key === "fuerza" ? activHTML(pz, week) + `<div class="sec">Fuerza</div>` : ""}
       ${((u, uw) => d.ex[VAR(week)].map((e0, i) => { const r = personalEx(pz, d.swapKey || d.key, VAR(week), i, weekEx(d, week, VAR(week), i, e0, planProg, uw), u); return r && { ...r, i }; }))(new Set(), new Set()).filter(Boolean).map(({ e, tag, i }) => { const [main, extra] = doseAt(i);
-        if (e[2] === "sec") return `<div class="sec">${esc(e[0])}${main ? ` · ${esc(main)}` : ""}${extra ? ` · ${esc(extra)}` : ""}</div>`;   // cabecera de parte (Fuerza / WOD)
+        if (e[2] === "sec") return `<div class="sec">${esc(e[0])}${main && e[1] !== "fijo" ? ` · ${esc(main)}` : ""}${extra ? ` · ${esc(extra)}` : ""}</div>`;   // cabecera de parte (Fuerza / WOD)
         const pc = pctFor(e[0], main, extra, p); if (pc) anyPct = true; return `<div class="ex"><span class="n">${esc(e[0])}</span><span class="rx">${esc(main)}${pc ? ` <span class="pct">${pc} %</span>` : ""}${e[2] ? ` <small class="muted" style="font:500 12px var(--body)">${esc(e[2])}</small>` : ""}</span><span class="cue">${tag ? `<b style="color:var(--ball-deep)">↻ ${esc(tag)}.</b> ` : ""}${esc(e[1])}${extra ? ` · ${esc(extra)}` : ""}</span>${vid(e[3])}</div>`; }).join("")}
       ${planProg === 1 ? "" : isoHTML(pz, planProg, d, week, p, SD.findIndex((x) => x.key === d.key))}
       ${d.key === runKey ? runHTML(pz, p, level) : [6, 7].includes(planProg) ? "" : finisherHTML(pz)}
